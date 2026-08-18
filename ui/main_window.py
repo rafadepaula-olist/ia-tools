@@ -21,6 +21,13 @@ class MainWindow(QMainWindow):
         self.resize(1100, 780)
         self.setMinimumSize(850, 600)
 
+        # Set Window Icon
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "ia-tools.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        else:
+            self.setWindowIcon(qta.icon('fa5s.robot', color='#818cf8'))
+
         # Initialize Config Managers
         self.managers = {
             "Antigravity": AntigravityConfigManager(),

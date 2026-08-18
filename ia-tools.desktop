@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=IA Tools Manager
+GenericName=AI Agent Tools & MCP Manager
+Comment=Gerenciador visual de MCPs, Plugins e Skills para Antigravity, Claude e OpenCode
+Exec=ia-tools
+Icon=ia-tools
+Terminal=false
+Categories=Development;Utility;
+Keywords=ai;mcp;claude;gemini;antigravity;opencode;tools;
+StartupWMClass=ia-tools
+StartupNotify=true
