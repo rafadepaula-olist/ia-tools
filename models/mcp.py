@@ -12,6 +12,8 @@ class McpServer:
     url: Optional[str] = None
     headers: Dict[str, str] = field(default_factory=dict)
     enabled: bool = True
+    scope: str = "global"  # 'global' or 'project'
+    project_path: Optional[str] = None  # e.g. '/home/rafael.paula'
     raw_data: Dict[str, Any] = field(default_factory=dict)
     source_file: str = ""
 

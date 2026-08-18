@@ -54,7 +54,21 @@ class McpCard(QFrame):
         self.type_badge = Badge(self.mcp.display_type, variant=self.mcp.display_type)
         self.status_badge = Badge("ATIVO" if self.mcp.enabled else "INATIVO", variant="active" if self.mcp.enabled else "inactive")
 
+        # Scope badge (Global vs Project vs Cloud)
+        if self.mcp.scope == "project" and self.mcp.project_path:
+            home = os.path.expanduser("~")
+            short_p = "~" if self.mcp.project_path == home else os.path.basename(self.mcp.project_path)
+            self.scope_badge = Badge(f"PROJ: {short_p}", variant="project")
+            self.scope_badge.setToolTip(f"Escopo do Projeto: {self.mcp.project_path}")
+        elif self.mcp.scope == "cloud":
+            self.scope_badge = Badge("CLAUDE.AI", variant="cloud")
+            self.scope_badge.setToolTip("Integração Cloud Claude.ai (OAuth)")
+        else:
+            self.scope_badge = Badge("GLOBAL", variant="global")
+            self.scope_badge.setToolTip("Escopo Global (Todos os Projetos)")
+
         top_row.addWidget(self.name_lbl)
+        top_row.addWidget(self.scope_badge)
         top_row.addWidget(self.type_badge)
         top_row.addWidget(self.status_badge)
         top_row.addStretch()
@@ -247,7 +261,16 @@ class McpPanel(QWidget):
         self._render_cards()
 
     def _on_mcp_toggled(self, mcp: McpServer, enabled: bool):
-        success = self.config_manager.toggle_mcp(mcp.name, enabled)
+        if hasattr(self.config_manager, 'toggle_mcp'):
+            import inspect
+            sig = inspect.signature(self.config_manager.toggle_mcp)
+            if 'project_path' in sig.parameters:
+                success = self.config_manager.toggle_mcp(mcp.name, enabled, project_path=mcp.project_path)
+            else:
+                success = self.config_manager.toggle_mcp(mcp.name, enabled)
+        else:
+            success = False
+
         if success:
             state_str = "habilitado" if enabled else "desabilitado"
             self.statusChanged.emit(f"MCP '{mcp.name}' {state_str} com sucesso em {self.agent_name}.")
@@ -270,6 +293,9 @@ class McpPanel(QWidget):
         dialog = McpEditorDialog(mcp=mcp, agent_name=self.agent_name, parent=self)
         if dialog.exec():
             updated_mcp = dialog.result_mcp
+            # preserve scope and project_path
+            updated_mcp.scope = mcp.scope
+            updated_mcp.project_path = mcp.project_path
             success = self.config_manager.save_mcp(updated_mcp)
             if success:
                 self.statusChanged.emit(f"MCP '{updated_mcp.name}' atualizado com sucesso!")
@@ -278,14 +304,21 @@ class McpPanel(QWidget):
                 QMessageBox.critical(self, "Erro", f"Falha ao atualizar MCP {updated_mcp.name}.")
 
     def _on_mcp_deleted(self, mcp: McpServer):
+        scope_info = f" (Projeto: {mcp.project_path})" if mcp.project_path else ""
         reply = QMessageBox.question(
             self,
             "Confirmar Exclusão",
-            f"Tem certeza que deseja remover o MCP Server '{mcp.name}' de {self.agent_name}?\n\nUm backup automático da configuração será mantido.",
+            f"Tem certeza que deseja remover o MCP Server '{mcp.name}'{scope_info} de {self.agent_name}?\n\nUm backup automático da configuração será mantido.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            success = self.config_manager.delete_mcp(mcp.name)
+            import inspect
+            sig = inspect.signature(self.config_manager.delete_mcp)
+            if 'project_path' in sig.parameters:
+                success = self.config_manager.delete_mcp(mcp.name, project_path=mcp.project_path)
+            else:
+                success = self.config_manager.delete_mcp(mcp.name)
+
             if success:
                 self.statusChanged.emit(f"MCP '{mcp.name}' removido com sucesso.")
                 self.reload_data()

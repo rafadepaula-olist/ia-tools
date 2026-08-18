@@ -16,35 +16,91 @@ class ClaudeConfigManager(BaseConfigManager):
 
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
-        seen = set()
-
         claude_data = self.read_json_file(self.claude_json_file)
         settings_data = self.read_json_file(self.settings_file)
 
-        # Active MCPs in ~/.claude.json
-        active_dict = claude_data.get("mcpServers", {})
-        for name, cfg in active_dict.items():
-            if not isinstance(cfg, dict):
+        # 1. Global Active MCPs in ~/.claude.json
+        active_global = claude_data.get("mcpServers", {})
+        for name, cfg in active_global.items():
+            if isinstance(cfg, dict):
+                servers.append(self._dict_to_mcp(name, cfg, enabled=True, scope="global", source_file=self.claude_json_file))
+
+        # 2. Global Disabled MCPs in ~/.claude.json or ~/.claude/settings.json
+        disabled_global = claude_data.get("_disabledMcpServers", {})
+        if not disabled_global:
+            disabled_global = claude_data.get("disabledMcpServers", {})
+        if not disabled_global:
+            disabled_global = settings_data.get("_disabledMcpServers", {})
+
+        for name, cfg in disabled_global.items():
+            if isinstance(cfg, dict):
+                servers.append(self._dict_to_mcp(name, cfg, enabled=False, scope="global", source_file=self.claude_json_file))
+
+        # 3. Project-level MCPs in ~/.claude.json (e.g. ~/, ~/tiny/tinystack/tinyerp, etc.)
+        projects = claude_data.get("projects", {})
+        for proj_path, proj_data in projects.items():
+            if not isinstance(proj_data, dict):
                 continue
-            seen.add(name)
-            servers.append(self._dict_to_mcp(name, cfg, enabled=True, source_file=self.claude_json_file))
+            
+            proj_mcps = proj_data.get("mcpServers", {})
+            for name, cfg in proj_mcps.items():
+                if isinstance(cfg, dict):
+                    servers.append(self._dict_to_mcp(
+                        name=name,
+                        cfg=cfg,
+                        enabled=True,
+                        scope="project",
+                        project_path=proj_path,
+                        source_file=self.claude_json_file
+                    ))
 
-        # Disabled MCPs in ~/.claude.json or ~/.claude/settings.json
-        disabled_dict = claude_data.get("_disabledMcpServers", {})
-        if not disabled_dict:
-            disabled_dict = claude_data.get("disabledMcpServers", {})
-        if not disabled_dict:
-            disabled_dict = settings_data.get("_disabledMcpServers", {})
+            proj_disabled = proj_data.get("_disabledMcpServers", {})
+            for name, cfg in proj_disabled.items():
+                if isinstance(cfg, dict):
+                    servers.append(self._dict_to_mcp(
+                        name=name,
+                        cfg=cfg,
+                        enabled=False,
+                        scope="project",
+                        project_path=proj_path,
+                        source_file=self.claude_json_file
+                    ))
 
-        for name, cfg in disabled_dict.items():
-            if name in seen or not isinstance(cfg, dict):
-                continue
-            seen.add(name)
-            servers.append(self._dict_to_mcp(name, cfg, enabled=False, source_file=self.claude_json_file))
+        # 4. Cloud claude.ai MCPs (from ~/.claude/mcp-needs-auth-cache.json or remote settings)
+        cloud_cache_file = os.path.join(self.claude_dir, "mcp-needs-auth-cache.json")
+        cloud_urls = {
+            "claude.ai Datadog": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp",
+            "claude.ai Intercom": "https://mcp.intercom.com/mcp",
+            "claude.ai HubSpot": "https://mcp.hubspot.com/anthropic",
+            "claude.ai Figma": "https://mcp.figma.com/mcp",
+            "claude.ai Asana": "https://mcp.asana.com/sse",
+        }
+        if os.path.exists(cloud_cache_file):
+            cache_data = self.read_json_file(cloud_cache_file)
+            for c_name in cache_data.keys():
+                if c_name.startswith("claude.ai") and not any(s.name == c_name for s in servers):
+                    c_url = cloud_urls.get(c_name, "")
+                    servers.append(McpServer(
+                        name=c_name,
+                        server_type="http" if not c_url.endswith("/sse") else "sse",
+                        url=c_url,
+                        enabled=True,
+                        scope="cloud",
+                        project_path="claude.ai",
+                        source_file=cloud_cache_file
+                    ))
 
-        return sorted(servers, key=lambda x: x.name.lower())
+        return sorted(servers, key=lambda x: (x.scope, x.name.lower(), x.project_path or ""))
 
-    def _dict_to_mcp(self, name: str, cfg: Dict[str, Any], enabled: bool, source_file: str) -> McpServer:
+    def _dict_to_mcp(
+        self,
+        name: str,
+        cfg: Dict[str, Any],
+        enabled: bool,
+        scope: str = "global",
+        project_path: Optional[str] = None,
+        source_file: str = ""
+    ) -> McpServer:
         server_type = cfg.get("type", "stdio")
         url = cfg.get("url", "")
         headers = cfg.get("headers", {})
@@ -64,47 +120,80 @@ class ClaudeConfigManager(BaseConfigManager):
             url=url if url else None,
             headers=headers if isinstance(headers, dict) else {},
             enabled=enabled,
+            scope=scope,
+            project_path=project_path,
             raw_data=cfg,
             source_file=source_file
         )
 
     def save_mcp(self, mcp: McpServer) -> bool:
         claude_data = self.read_json_file(self.claude_json_file)
-        if "mcpServers" not in claude_data:
-            claude_data["mcpServers"] = {}
-        if "_disabledMcpServers" not in claude_data:
-            claude_data["_disabledMcpServers"] = {}
-
-        # Remove from both
-        claude_data["mcpServers"].pop(mcp.name, None)
-        claude_data["_disabledMcpServers"].pop(mcp.name, None)
-
         mcp_dict = mcp.to_claude_dict()
 
-        if mcp.enabled:
-            claude_data["mcpServers"][mcp.name] = mcp_dict
+        if mcp.project_path:
+            if "projects" not in claude_data:
+                claude_data["projects"] = {}
+            if mcp.project_path not in claude_data["projects"]:
+                claude_data["projects"][mcp.project_path] = {}
+            
+            p_data = claude_data["projects"][mcp.project_path]
+            if "mcpServers" not in p_data:
+                p_data["mcpServers"] = {}
+            if "_disabledMcpServers" not in p_data:
+                p_data["_disabledMcpServers"] = {}
+
+            p_data["mcpServers"].pop(mcp.name, None)
+            p_data["_disabledMcpServers"].pop(mcp.name, None)
+
+            if mcp.enabled:
+                p_data["mcpServers"][mcp.name] = mcp_dict
+            else:
+                p_data["_disabledMcpServers"][mcp.name] = mcp_dict
         else:
-            claude_data["_disabledMcpServers"][mcp.name] = mcp_dict
+            if "mcpServers" not in claude_data:
+                claude_data["mcpServers"] = {}
+            if "_disabledMcpServers" not in claude_data:
+                claude_data["_disabledMcpServers"] = {}
+
+            claude_data["mcpServers"].pop(mcp.name, None)
+            claude_data["_disabledMcpServers"].pop(mcp.name, None)
+
+            if mcp.enabled:
+                claude_data["mcpServers"][mcp.name] = mcp_dict
+            else:
+                claude_data["_disabledMcpServers"][mcp.name] = mcp_dict
 
         return self.write_json_file(self.claude_json_file, claude_data)
 
-    def toggle_mcp(self, name: str, enable: bool) -> bool:
+    def toggle_mcp(self, name: str, enable: bool, project_path: Optional[str] = None) -> bool:
         mcps = self.list_mcps()
-        target = next((m for m in mcps if m.name == name), None)
+        target = next((m for m in mcps if m.name == name and m.project_path == project_path), None)
+        if not target:
+            target = next((m for m in mcps if m.name == name), None)
         if not target:
             return False
         target.enabled = enable
         return self.save_mcp(target)
 
-    def delete_mcp(self, name: str) -> bool:
+    def delete_mcp(self, name: str, project_path: Optional[str] = None) -> bool:
         claude_data = self.read_json_file(self.claude_json_file)
         modified = False
-        if "mcpServers" in claude_data and name in claude_data["mcpServers"]:
-            del claude_data["mcpServers"][name]
-            modified = True
-        if "_disabledMcpServers" in claude_data and name in claude_data["_disabledMcpServers"]:
-            del claude_data["_disabledMcpServers"][name]
-            modified = True
+
+        if project_path and "projects" in claude_data and project_path in claude_data["projects"]:
+            p_data = claude_data["projects"][project_path]
+            if "mcpServers" in p_data and name in p_data["mcpServers"]:
+                del p_data["mcpServers"][name]
+                modified = True
+            if "_disabledMcpServers" in p_data and name in p_data["_disabledMcpServers"]:
+                del p_data["_disabledMcpServers"][name]
+                modified = True
+        else:
+            if "mcpServers" in claude_data and name in claude_data["mcpServers"]:
+                del claude_data["mcpServers"][name]
+                modified = True
+            if "_disabledMcpServers" in claude_data and name in claude_data["_disabledMcpServers"]:
+                del claude_data["_disabledMcpServers"][name]
+                modified = True
 
         if modified:
             return self.write_json_file(self.claude_json_file, claude_data)

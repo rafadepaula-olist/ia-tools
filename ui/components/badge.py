@@ -13,6 +13,9 @@ class Badge(QLabel):
         "extension": ("#312e81", "#818cf8", "#4338ca"),
         "remote": ("#0c4a6e", "#38bdf8", "#0284c7"),
         "local": ("#1e293b", "#94a3b8", "#475569"),
+        "project": ("#2e1065", "#c084fc", "#7e22ce"),
+        "global": ("#065f46", "#6ee7b7", "#059669"),
+        "cloud": ("#3b0764", "#f472b6", "#db2777"),
     }
 
     def __init__(self, text: str, variant: str = "stdio", parent=None):

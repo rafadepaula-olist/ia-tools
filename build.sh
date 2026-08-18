@@ -25,9 +25,10 @@ echo "🔨 Compilando binário standalone './dist/ia-tools'..."
 ln -sf dist/ia-tools ia-tools
 chmod +x ia-tools dist/ia-tools
 
-# Auto-update ~/.local/bin/ia-tools
+# Auto-update ~/.local/bin/ia-tools atomically (avoids Text file busy if running)
 mkdir -p "$HOME/.local/bin"
-cp dist/ia-tools "$HOME/.local/bin/ia-tools"
+cp dist/ia-tools "$HOME/.local/bin/ia-tools.tmp"
+mv -f "$HOME/.local/bin/ia-tools.tmp" "$HOME/.local/bin/ia-tools"
 chmod +x "$HOME/.local/bin/ia-tools"
 
 # Update desktop database
