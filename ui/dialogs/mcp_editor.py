@@ -212,7 +212,7 @@ class McpEditorDialog(QDialog):
         args_lbl = QLabel("Argumentos (um por linha ou separados por espaço):")
         self.args_input = QTextEdit()
         self.args_input.setMaximumHeight(75)
-        self.args_input.setPlaceholderText("-y\n@modelcontextprotocol/server-filesystem\n/home/rafael.paula")
+        self.args_input.setPlaceholderText(f"-y\n@modelcontextprotocol/server-filesystem\n{os.path.expanduser('~')}")
         std_layout.addWidget(args_lbl)
         std_layout.addWidget(self.args_input)
 

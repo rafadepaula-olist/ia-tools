@@ -339,6 +339,10 @@ class ClaudeConfigManager(BaseConfigManager):
                 self.write_json_file(self.settings_file, settings_data)
         elif item.kind == "skill":
             if item.path and os.path.exists(item.path):
+                # Don't follow symlinks — remove the link itself, not its target
+                if os.path.islink(item.path):
+                    os.unlink(item.path)
+                    return True
                 backup_dest = os.path.join(self.BACKUP_DIR, f"deleted_{os.path.basename(item.path)}")
                 try:
                     if os.path.exists(backup_dest):

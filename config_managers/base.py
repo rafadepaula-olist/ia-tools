@@ -11,7 +11,11 @@ class BaseConfigManager:
 
     @classmethod
     def ensure_backup_dir(cls):
-        os.makedirs(cls.BACKUP_DIR, exist_ok=True)
+        os.makedirs(cls.BACKUP_DIR, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(cls.BACKUP_DIR, 0o700)
+        except OSError:
+            pass
 
     @classmethod
     def backup_file(cls, filepath: str) -> Optional[str]:
