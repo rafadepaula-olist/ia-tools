@@ -25,4 +25,14 @@ echo "🔨 Compilando binário standalone './dist/ia-tools'..."
 ln -sf dist/ia-tools ia-tools
 chmod +x ia-tools dist/ia-tools
 
-echo "✅ Binário compilado com sucesso em: ./ia-tools"
+# Auto-update ~/.local/bin/ia-tools
+mkdir -p "$HOME/.local/bin"
+cp dist/ia-tools "$HOME/.local/bin/ia-tools"
+chmod +x "$HOME/.local/bin/ia-tools"
+
+# Update desktop database
+update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true
+
+echo "✅ Binário compilado e instalado com sucesso!"
+echo "   - Local: ./ia-tools"
+echo "   - Global ($PATH): ~/.local/bin/ia-tools"
