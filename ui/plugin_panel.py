@@ -54,6 +54,15 @@ class PluginSkillCard(QFrame):
         self.status_badge = Badge("ATIVO" if self.item.enabled else "INATIVO", variant="active" if self.item.enabled else "inactive")
 
         top_row.addWidget(self.name_lbl)
+        
+        # Scope badge if project-level
+        if self.item.metadata and self.item.metadata.get("scope") == "project":
+            p_path = self.item.metadata.get("project_path", "")
+            p_name = os.path.basename(p_path) if p_path else "PROJ"
+            self.scope_badge = Badge(f"PROJ: {p_name}", variant="project")
+            self.scope_badge.setToolTip(f"Skill local do projeto: {p_path}")
+            top_row.addWidget(self.scope_badge)
+
         top_row.addWidget(self.kind_badge)
         top_row.addWidget(self.status_badge)
         top_row.addStretch()
@@ -187,10 +196,23 @@ class PluginPanel(QWidget):
         self.scroll_area.setWidget(self.cards_container)
         layout.addWidget(self.scroll_area, 1)
 
-    def reload_data(self):
-        self.items = self.config_manager.list_plugins_and_skills()
+    def reload_data(self, project_path: str = None):
+        self.project_path = getattr(self, 'project_path', None) if project_path is None else project_path
+        if hasattr(self.config_manager, 'list_plugins_and_skills'):
+            import inspect
+            sig = inspect.signature(self.config_manager.list_plugins_and_skills)
+            if 'project_path' in sig.parameters:
+                self.items = self.config_manager.list_plugins_and_skills(self.project_path)
+            else:
+                self.items = self.config_manager.list_plugins_and_skills()
+        else:
+            self.items = []
         self._render_cards()
         self.statusChanged.emit(f"{len(self.items)} Plugins e Skills carregados para {self.agent_name}")
+
+    def set_project_filter(self, project_path: str = None):
+        self.project_path = project_path
+        self.reload_data(project_path)
 
     def _render_cards(self):
         while self.cards_layout.count() > 1:
@@ -204,6 +226,18 @@ class PluginPanel(QWidget):
 
         filtered_count = 0
         for it in self.items:
+            # Check project filter
+            if hasattr(self, 'project_path') and self.project_path:
+                if self.project_path == "GLOBAL":
+                    # Only global
+                    if it.metadata and it.metadata.get("scope") == "project":
+                        continue
+                elif self.project_path != "__ALL__":
+                    # Must match project or be global
+                    if it.metadata and it.metadata.get("scope") == "project":
+                        if it.metadata.get("project_path") != self.project_path:
+                            continue
+
             if query and query not in it.name.lower() and query not in it.description.lower() and query not in it.source.lower():
                 continue
 

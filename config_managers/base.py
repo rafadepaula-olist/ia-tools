@@ -99,6 +99,86 @@ class BaseConfigManager:
             return "", ""
 
     @classmethod
+    def get_known_projects(cls) -> list[str]:
+        """Discovers active projects from Claude, Gemini and common directories."""
+        home = os.path.expanduser("~")
+        projects = set()
+
+        # Claude projects
+        claude_json = os.path.join(home, ".claude.json")
+        if os.path.exists(claude_json):
+            try:
+                c_data = cls.read_json_file(claude_json)
+                for p in c_data.get("projects", {}).keys():
+                    if os.path.exists(p) and os.path.isdir(p) and p != home:
+                        projects.add(os.path.abspath(p))
+            except Exception:
+                pass
+
+        # Gemini projects
+        gemini_projects = os.path.join(home, ".gemini", "projects.json")
+        if os.path.exists(gemini_projects):
+            try:
+                g_data = cls.read_json_file(gemini_projects)
+                for item in g_data.get("recentProjects", []):
+                    p = item.get("path") if isinstance(item, dict) else item
+                    if p and isinstance(p, str) and os.path.exists(p) and os.path.isdir(p) and p != home:
+                        projects.add(os.path.abspath(p))
+            except Exception:
+                pass
+
+        # Also add current workspace if in user home
+        ia_tools_dir = os.path.abspath("/home/rafael.paula/ia-tools")
+        if os.path.exists(ia_tools_dir):
+            projects.add(ia_tools_dir)
+
+        return sorted(list(projects), key=lambda x: x.lower())
+
+    @classmethod
+    def scan_project_skills(cls, project_path: str) -> list:
+        """Scans for skills within a specific project folder."""
+        from models.plugin import PluginSkill
+        skills: list[PluginSkill] = []
+        if not project_path or not os.path.exists(project_path):
+            return skills
+
+        # Candidate skill subdirectories in the project
+        candidate_dirs = [
+            (os.path.join(project_path, ".agents", "skills"), ".agents/skills"),
+            (os.path.join(project_path, ".gemini", "skills"), ".gemini/skills"),
+            (os.path.join(project_path, ".claude", "skills"), ".claude/skills"),
+            (os.path.join(project_path, ".opencode", "skills"), ".opencode/skills"),
+            (os.path.join(project_path, "skills"), "skills")
+        ]
+
+        seen_names = set()
+        for s_dir, label in candidate_dirs:
+            if not os.path.exists(s_dir) or not os.path.isdir(s_dir):
+                continue
+            for entry in os.listdir(s_dir):
+                entry_path = os.path.join(s_dir, entry)
+                if os.path.isdir(entry_path) and not entry.startswith('.'):
+                    if entry in seen_names:
+                        continue
+                    seen_names.add(entry)
+                    skill_md = os.path.join(entry_path, "SKILL.md")
+                    title, desc = cls.parse_skill_md(skill_md)
+                    is_enabled = not entry.endswith('.disabled')
+                    p_name = os.path.basename(project_path)
+                    skills.append(PluginSkill(
+                        name=entry,
+                        kind="skill",
+                        enabled=is_enabled,
+                        source=f"PROJ [{p_name}]: {label}/{entry}",
+                        path=entry_path,
+                        description=desc or f"Skill do projeto {p_name} ({entry})",
+                        source_file=s_dir,
+                        metadata={"scope": "project", "project_path": project_path}
+                    ))
+
+        return skills
+
+    @classmethod
     def create_skill_folder(cls, target_dir: str, name: str, description: str, instructions: str) -> str:
         skill_dir = os.path.join(target_dir, name)
         os.makedirs(skill_dir, exist_ok=True)

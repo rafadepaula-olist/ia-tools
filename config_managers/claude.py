@@ -199,7 +199,7 @@ class ClaudeConfigManager(BaseConfigManager):
             return self.write_json_file(self.claude_json_file, claude_data)
         return False
 
-    def list_plugins_and_skills(self) -> List[PluginSkill]:
+    def list_plugins_and_skills(self, project_path: Optional[str] = None) -> List[PluginSkill]:
         items: List[PluginSkill] = []
         settings_data = self.read_json_file(self.settings_file)
         enabled_plugins = settings_data.get("enabledPlugins", {})
@@ -264,6 +264,13 @@ class ClaudeConfigManager(BaseConfigManager):
                         description=desc or f"Skill {entry}",
                         source_file=self.skills_dir
                     ))
+
+        # 4. Project-specific skills
+        if project_path:
+            items.extend(self.scan_project_skills(project_path))
+        else:
+            for p in self.get_known_projects():
+                items.extend(self.scan_project_skills(p))
 
         return sorted(items, key=lambda x: (x.kind, x.name.lower()))
 

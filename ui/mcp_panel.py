@@ -217,10 +217,18 @@ class McpPanel(QWidget):
         self.scroll_area.setWidget(self.cards_container)
         layout.addWidget(self.scroll_area, 1)
 
-    def reload_data(self):
-        self.mcps = self.config_manager.list_mcps()
+    def reload_data(self, project_path: str = None):
+        self.project_path = getattr(self, 'project_path', None) if project_path is None else project_path
+        if hasattr(self.config_manager, 'list_mcps'):
+            self.mcps = self.config_manager.list_mcps()
+        else:
+            self.mcps = []
         self._render_cards()
         self.statusChanged.emit(f"{len(self.mcps)} MCP Servers carregados para {self.agent_name}")
+
+    def set_project_filter(self, project_path: str = None):
+        self.project_path = project_path
+        self.reload_data(project_path)
 
     def _render_cards(self):
         # Clear existing cards
@@ -234,6 +242,15 @@ class McpPanel(QWidget):
 
         filtered_count = 0
         for mcp in self.mcps:
+            # Check project filter
+            if hasattr(self, 'project_path') and self.project_path:
+                if self.project_path == "GLOBAL":
+                    if mcp.scope == "project":
+                        continue
+                elif self.project_path != "__ALL__":
+                    if mcp.scope == "project" and mcp.project_path != self.project_path:
+                        continue
+
             # Check search
             if query and query not in mcp.name.lower() and query not in mcp.command_display.lower():
                 continue
