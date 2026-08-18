@@ -101,7 +101,7 @@ O projeto utiliza uma arquitetura desacoplada e extensível. Para adicionar um n
 3. **UI**: Registre a nova aba em [`ui/main_window.py`](ui/main_window.py) e adicione o ícone em [`ui/agent_tab.py`](ui/agent_tab.py).
 4. **Testes & Rebuild**: Adicione os testes em [`tests/test_managers.py`](tests/test_managers.py) e execute `./build.sh`.
 
-👉 **Guia completo para agentes**: Consulte a skill [`skills/extending-ia-tools-providers/SKILL.md`](skills/extending-ia-tools-providers/SKILL.md).
+👉 **Guia completo para agentes**: Consulte a skill [`.agents/skills/extending-ia-tools-providers/SKILL.md`](.agents/skills/extending-ia-tools-providers/SKILL.md).
 
 ---
 
