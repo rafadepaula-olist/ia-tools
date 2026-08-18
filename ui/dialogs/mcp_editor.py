@@ -8,6 +8,8 @@ import json
 import qtawesome as qta
 from models.mcp import McpServer
 
+import os
+
 PRESETS = {
     "Custom (Vazio)": {
         "type": "stdio",
@@ -49,7 +51,7 @@ PRESETS = {
     "Filesystem MCP": {
         "type": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/rafael.paula"],
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", os.path.expanduser("~")],
         "env": {}
     },
     "Memory MCP (Knowledge Graph)": {

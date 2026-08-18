@@ -201,7 +201,8 @@ class AntigravityConfigManager(BaseConfigManager):
             ext_data = self.read_json_file(self.extensions_file)
             if enable:
                 if item.name not in ext_data:
-                    ext_data[item.name] = {"overrides": ["/home/rafael.paula/*"]}
+                    home_override = os.path.join(os.path.expanduser("~"), "*")
+                    ext_data[item.name] = {"overrides": [home_override]}
             else:
                 ext_data.pop(item.name, None)
             return self.write_json_file(self.extensions_file, ext_data)

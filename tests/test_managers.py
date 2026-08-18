@@ -2,7 +2,7 @@ import unittest
 import os
 import sys
 
-sys.path.insert(0, '/home/rafael.paula/ia-tools')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config_managers import AntigravityConfigManager, ClaudeConfigManager, OpenCodeConfigManager
 from models import McpServer, PluginSkill

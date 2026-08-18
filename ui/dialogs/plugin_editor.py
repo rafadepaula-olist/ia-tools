@@ -4,11 +4,13 @@ from PyQt6.QtWidgets import (
 )
 import qtawesome as qta
 
+import os
+
 POPULAR_PLUGINS = {
     "Custom / Outro": {"name": "", "source_type": "github", "source": ""},
     "Superpowers (Claude & Gemini)": {"name": "superpowers@claude-plugins-official", "source_type": "github", "source": "anthropics/claude-plugins-official"},
     "Caveman (Ultra Token Efficiency)": {"name": "caveman@caveman", "source_type": "github", "source": "JuliusBrussee/caveman"},
-    "I Have ADHD (Workflow Helper)": {"name": "i-have-adhd@i-have-adhd", "source_type": "directory", "source": "/home/rafael.paula/i-have-adhd"},
+    "I Have ADHD (Workflow Helper)": {"name": "i-have-adhd@i-have-adhd", "source_type": "directory", "source": os.path.join(os.path.expanduser("~"), "i-have-adhd")},
     "Anthropic Agent Skills": {"name": "anthropic-agent-skills", "source_type": "github", "source": "anthropics/skills"},
     "Olist ERP Plugins": {"name": "olist-erp-plugins", "source_type": "git", "source": "git@github.com:olist/harness-plugins-erp.git"},
     "Delegate AGY (Subagents)": {"name": "agy-delegate@agy-delegate", "source_type": "git", "source": "https://github.com/davdittrich/delegate-agy.git"},

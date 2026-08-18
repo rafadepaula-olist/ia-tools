@@ -127,9 +127,9 @@ class BaseConfigManager:
             except Exception:
                 pass
 
-        # Also add current workspace if in user home
-        ia_tools_dir = os.path.abspath("/home/rafael.paula/ia-tools")
-        if os.path.exists(ia_tools_dir):
+        # Also add current workspace if valid
+        ia_tools_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if os.path.exists(ia_tools_dir) and os.path.isdir(ia_tools_dir) and ia_tools_dir != home:
             projects.add(ia_tools_dir)
 
         return sorted(list(projects), key=lambda x: x.lower())
@@ -180,12 +180,24 @@ class BaseConfigManager:
 
     @classmethod
     def create_skill_folder(cls, target_dir: str, name: str, description: str, instructions: str) -> str:
-        skill_dir = os.path.join(target_dir, name)
+        name = name.strip()
+        if not name or not re.match(r'^[a-zA-Z0-9_-]+$', name):
+            raise ValueError(f"Invalid skill name '{name}'. Only alphanumeric characters, hyphens, and underscores are allowed.")
+
+        target_dir_abs = os.path.abspath(target_dir)
+        skill_dir = os.path.abspath(os.path.join(target_dir_abs, name))
+
+        if not skill_dir.startswith(target_dir_abs + os.sep) and skill_dir != target_dir_abs:
+            raise ValueError(f"Directory traversal detected: '{name}' is not within '{target_dir}'.")
+
         os.makedirs(skill_dir, exist_ok=True)
         skill_file = os.path.join(skill_dir, "SKILL.md")
+
+        # Clean description and instructions
+        clean_desc = description.replace("\r\n", " ").replace("\n", " ").replace('"', '\\"').strip()
         content = f"""---
 name: {name}
-description: {description}
+description: "{clean_desc}"
 ---
 
 # {name}

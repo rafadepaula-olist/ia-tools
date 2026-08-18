@@ -4,9 +4,9 @@ import sys
 import shutil
 import tempfile
 
-sys.path.insert(0, '/home/rafael.paula/ia-tools')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config_managers import AntigravityConfigManager, ClaudeConfigManager, OpenCodeConfigManager
+from config_managers import AntigravityConfigManager, ClaudeConfigManager, OpenCodeConfigManager, BaseConfigManager
 from models import McpServer, PluginSkill
 
 class TestFullIntegration(unittest.TestCase):
@@ -81,6 +81,24 @@ Do not optimize without explain plan.
         name, desc = AntigravityConfigManager.parse_skill_md(skill_file)
         self.assertEqual(name, "my-skill")
         self.assertEqual(desc, "Tests database query optimizer")
+
+    def test_create_skill_folder_security(self):
+        target_dir = os.path.join(self.tmp_dir, "skills")
+        os.makedirs(target_dir)
+
+        # 1. Valid creation
+        skill_path = BaseConfigManager.create_skill_folder(target_dir, "valid-skill", "My description", "Rules here")
+        self.assertTrue(os.path.exists(os.path.join(skill_path, "SKILL.md")))
+
+        # 2. Rejects path traversal
+        with self.assertRaises(ValueError):
+            BaseConfigManager.create_skill_folder(target_dir, "../../escaped-skill", "desc", "rules")
+
+        with self.assertRaises(ValueError):
+            BaseConfigManager.create_skill_folder(target_dir, "/etc/passwd", "desc", "rules")
+
+        with self.assertRaises(ValueError):
+            BaseConfigManager.create_skill_folder(target_dir, "invalid name with spaces!", "desc", "rules")
 
 if __name__ == '__main__':
     unittest.main()

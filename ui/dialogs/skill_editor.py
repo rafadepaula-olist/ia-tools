@@ -85,6 +85,16 @@ Descreva aqui o objetivo principal desta skill.
         if not name:
             QMessageBox.warning(self, "Aviso", "O nome da Skill é obrigatório.")
             return
+
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+            QMessageBox.warning(
+                self,
+                "Nome Inválido",
+                "O nome da Skill deve conter apenas letras, números, hífens (-) e underscores (_), sem barras ou caracteres especiais."
+            )
+            return
+
         if not desc:
             QMessageBox.warning(self, "Aviso", "A descrição da Skill é obrigatória para o agente saber quando ativá-la.")
             return
