@@ -9,6 +9,20 @@ Compatível nativamente com:
 
 ---
 
+## 📸 Screenshots da Interface
+
+<div align="center">
+  <img src="assets/screenshots/main_window.png" alt="IA Tools Manager - Tela Principal" width="95%" />
+</div>
+
+<br/>
+
+| 🔌 Editor Visual & JSON de MCP Servers | 🧩 Editor de Skills com Frontmatter & Markdown |
+|:---:|:---:|
+| <img src="assets/screenshots/mcp_editor.png" alt="Editor MCP" width="460" /> | <img src="assets/screenshots/skill_editor.png" alt="Editor de Skills" width="460" /> |
+
+---
+
 ## 📥 Instalação & Execução
 
 ### Opção 1: Rodar a partir do Repositório (Desenvolvimento Rápido)
@@ -58,7 +72,7 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 
 ### 1. 🔌 Gestão Completa de MCPs (Model Context Protocol)
 * **Toggle Switch Visual Instantâneo**: Ative ou desative qualquer servidor MCP com 1 clique (sem perder credenciais, argumentos ou tokens).
-* **Suporte a Múltiplos Escopos no Claude**: Visualização e edição de MCPs Globais, específicos de cada projeto local (`[PROJ: ~]`, `[PROJ: tinyerp]`) e integrações OAuth da nuvem (`[CLAUDE.AI]`).
+* **Seletor de Workspace / Projeto**: Alterne rapidamente entre a visão Global e os projetos locais (`[PROJ: ~]`, `[PROJ: tinyerp]`, etc.) ou integrações da nuvem (`[CLAUDE.AI]`).
 * **Presets Prontos de 1 Clique**:
   * *Mercado Livre Remote MCP*
   * *ClickUp Remote MCP*
@@ -72,6 +86,7 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 
 ### 2. 🧩 Gestão de Plugins, Skills & Extensões
 * **Habilitar / Desabilitar**: Alterne o estado de plugins (ex: `superpowers`, `caveman`, `i-have-adhd`, `olist-erp-plugins`, `agy-delegate`) e skills locais.
+* **Reconhecimento Automático de Skills do Projeto**: Identifica e carrega skills locais de pastas de projetos (`.agents/skills`, `.claude/skills`, `.gemini/skills`, etc.).
 * **Instalador de Plugins**: Suporte a repositórios GitHub (`owner/repo`), URLs Git (`git@...`), diretórios locais e pacotes NPM.
 * **Criador e Editor de Skills**: Crie novas skills com frontmatter YAML padronizado e editor Markdown integrado para o arquivo `SKILL.md`.
 * **Atalho de Pasta**: Botão para abrir o diretório local de qualquer skill/plugin no seu gerenciador de arquivos padrão do Linux (`xdg-open`).
