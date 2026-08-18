@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
@@ -22,7 +23,7 @@ jobs:
             artifact_name: ia-tools-macos
             asset_name: ia-tools-macos
           - os: windows-latest
-            artifact_name: ia-tools.exe
+            artifact_name: ia-tools-windows.exe
             asset_name: ia-tools-windows.exe
 
     runs-on: ${{ matrix.os }}
@@ -42,24 +43,26 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build Standalone Binary
+      - name: Build Standalone Binary (Unix)
+        if: runner.os != 'Windows'
         run: |
           pyinstaller --noconfirm --onefile --windowed --name ia-tools \
             --collect-all qtawesome \
             --collect-all json5 \
-            --add-data "config_managers:config_managers" \
-            --add-data "models:models" \
-            --add-data "ui:ui" \
+            --add-data "assets:assets" \
             app.py
-
-      - name: Prepare binary artifact (Unix)
-        if: runner.os != 'Windows'
-        run: |
           mv dist/ia-tools dist/${{ matrix.artifact_name }}
+          chmod +x dist/${{ matrix.artifact_name }}
 
-      - name: Prepare binary artifact (Windows)
+      - name: Build Standalone Binary (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
+          pyinstaller --noconfirm --onefile --windowed --name ia-tools `
+            --collect-all qtawesome `
+            --collect-all json5 `
+            --add-data "assets;assets" `
+            app.py
           Move-Item dist\ia-tools.exe dist\${{ matrix.artifact_name }}
 
       - name: Upload Artifact
@@ -75,13 +78,14 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+          merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ia-tools-linux-x86_64/*
-            ia-tools-macos/*
-            ia-tools-windows.exe/*
+          files: release_assets/*
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
