@@ -19,6 +19,7 @@ class McpCard(QFrame):
     edited = pyqtSignal(McpServer)
     deleted = pyqtSignal(McpServer)
     synced = pyqtSignal(McpServer)
+    promoted_global = pyqtSignal(McpServer)
 
     def __init__(self, mcp: McpServer, parent=None):
         super().__init__(parent)
@@ -79,6 +80,14 @@ class McpCard(QFrame):
         top_row.addWidget(self.switch)
 
         # Action Buttons
+        if self.mcp.scope == "project":
+            self.promote_btn = QPushButton("Tornar Global")
+            self.promote_btn.setObjectName("secondaryBtn")
+            self.promote_btn.setIcon(qta.icon('fa5s.globe', color='#38bdf8'))
+            self.promote_btn.setToolTip("Transformar este MCP de Projeto em MCP Global (disponível para todos os projetos)")
+            self.promote_btn.clicked.connect(lambda: self.promoted_global.emit(self.mcp))
+            top_row.addWidget(self.promote_btn)
+
         self.edit_btn = QPushButton("Editar")
         self.edit_btn.setObjectName("secondaryBtn")
         self.edit_btn.setIcon(qta.icon('fa5s.edit', color='#cbd5e1'))
@@ -87,8 +96,8 @@ class McpCard(QFrame):
 
         self.sync_btn = QPushButton()
         self.sync_btn.setObjectName("secondaryBtn")
-        self.sync_btn.setIcon(qta.icon('fa5s.share-alt', color='#818cf8'))
-        self.sync_btn.setToolTip("Copiar este MCP para outro agente")
+        self.sync_btn.setIcon(qta.icon('fa5s.clone', color='#818cf8'))
+        self.sync_btn.setToolTip("Copiar este MCP para outro agente / provedor")
         self.sync_btn.clicked.connect(lambda: self.synced.emit(self.mcp))
         top_row.addWidget(self.sync_btn)
 
@@ -265,6 +274,7 @@ class McpPanel(QWidget):
             card.edited.connect(self._on_mcp_edited)
             card.deleted.connect(self._on_mcp_deleted)
             card.synced.connect(self._on_mcp_synced)
+            card.promoted_global.connect(self._on_mcp_promoted_global)
             self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
             filtered_count += 1
 
@@ -276,6 +286,28 @@ class McpPanel(QWidget):
 
     def _filter_items(self):
         self._render_cards()
+
+    def _on_mcp_promoted_global(self, mcp: McpServer):
+        proj_name = os.path.basename(mcp.project_path) if mcp.project_path else "projeto"
+        reply = QMessageBox.question(
+            self,
+            "Tornar MCP Global",
+            f"Deseja transformar o MCP Server '{mcp.name}' (atualmente restrito ao projeto '{proj_name}') em um MCP Global?\n\nEle ficará disponível para todos os projetos do agente {self.agent_name}.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            if hasattr(self.config_manager, 'convert_mcp_to_global'):
+                success = self.config_manager.convert_mcp_to_global(mcp)
+            else:
+                mcp.scope = "global"
+                mcp.project_path = None
+                success = self.config_manager.save_mcp(mcp)
+
+            if success:
+                self.statusChanged.emit(f"MCP '{mcp.name}' promovido para escopo Global com sucesso!")
+                self.reload_data()
+            else:
+                QMessageBox.critical(self, "Erro", f"Falha ao promover MCP '{mcp.name}' para global.")
 
     def _on_mcp_toggled(self, mcp: McpServer, enabled: bool):
         if hasattr(self.config_manager, 'toggle_mcp'):
@@ -310,10 +342,12 @@ class McpPanel(QWidget):
         dialog = McpEditorDialog(mcp=mcp, agent_name=self.agent_name, parent=self)
         if dialog.exec():
             updated_mcp = dialog.result_mcp
-            # preserve scope and project_path
-            updated_mcp.scope = mcp.scope
-            updated_mcp.project_path = mcp.project_path
-            success = self.config_manager.save_mcp(updated_mcp)
+            import inspect
+            sig = inspect.signature(self.config_manager.save_mcp)
+            if 'old_mcp' in sig.parameters:
+                success = self.config_manager.save_mcp(updated_mcp, old_mcp=mcp)
+            else:
+                success = self.config_manager.save_mcp(updated_mcp)
             if success:
                 self.statusChanged.emit(f"MCP '{updated_mcp.name}' atualizado com sucesso!")
                 self.reload_data()

@@ -1,12 +1,13 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
     QTextEdit, QPushButton, QTabWidget, QWidget, QTableWidget, QTableWidgetItem,
-    QHeaderView, QMessageBox, QCheckBox, QGroupBox
+    QHeaderView, QMessageBox, QCheckBox, QGroupBox, QFileDialog
 )
 from PyQt6.QtCore import Qt
 import json
 import qtawesome as qta
 from models.mcp import McpServer
+from config_managers.base import BaseConfigManager
 
 import os
 
@@ -186,6 +187,37 @@ class McpEditorDialog(QDialog):
         row1.addWidget(self.enabled_check)
         f_layout.addLayout(row1)
 
+        # Scope Selector (Global vs Project)
+        scope_row = QHBoxLayout()
+        scope_lbl = QLabel("Escopo:")
+        scope_lbl.setStyleSheet("font-weight: 600;")
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem("🌐 Global (Todos os Projetos)", "global")
+        self.scope_combo.addItem("📁 Projeto Específico", "project")
+        self.scope_combo.currentIndexChanged.connect(self._on_scope_changed)
+        scope_row.addWidget(scope_lbl)
+        scope_row.addWidget(self.scope_combo, 1)
+        f_layout.addLayout(scope_row)
+
+        self.proj_path_row = QHBoxLayout()
+        proj_path_lbl = QLabel("Pasta do Projeto:")
+        self.proj_path_combo = QComboBox()
+        self.proj_path_combo.setEditable(True)
+        home = os.path.expanduser("~")
+        for p in BaseConfigManager.get_known_projects():
+            short_p = p.replace(home, "~")
+            self.proj_path_combo.addItem(f"{os.path.basename(p)} ({short_p})", p)
+
+        browse_proj_btn = QPushButton()
+        browse_proj_btn.setIcon(qta.icon('fa5s.folder-open', color='#38bdf8'))
+        browse_proj_btn.setToolTip("Selecionar pasta do projeto...")
+        browse_proj_btn.clicked.connect(self._browse_project_path)
+
+        self.proj_path_row.addWidget(proj_path_lbl)
+        self.proj_path_row.addWidget(self.proj_path_combo, 1)
+        self.proj_path_row.addWidget(browse_proj_btn)
+        f_layout.addLayout(self.proj_path_row)
+
         # Type Selector
         row2 = QHBoxLayout()
         type_lbl = QLabel("Tipo de Conexão:")
@@ -328,9 +360,42 @@ class McpEditorDialog(QDialog):
             for k, v in p.get("env", {}).items():
                 self._add_env_row(k, v)
 
+    def _on_scope_changed(self, index: int):
+        is_project = self.scope_combo.currentData() == "project"
+        for i in range(self.proj_path_row.count()):
+            w = self.proj_path_row.itemAt(i).widget()
+            if w:
+                w.setVisible(is_project)
+
+    def _browse_project_path(self):
+        folder = QFileDialog.getExistingDirectory(self, "Selecionar Diretório do Projeto", os.path.expanduser("~"))
+        if folder:
+            idx = self.proj_path_combo.findData(folder)
+            if idx >= 0:
+                self.proj_path_combo.setCurrentIndex(idx)
+            else:
+                home = os.path.expanduser("~")
+                short_p = folder.replace(home, "~")
+                self.proj_path_combo.addItem(f"{os.path.basename(folder)} ({short_p})", folder)
+                self.proj_path_combo.setCurrentIndex(self.proj_path_combo.count() - 1)
+
     def _load_from_mcp(self):
         self.name_input.setText(self.mcp.name)
         self.enabled_check.setChecked(self.mcp.enabled)
+
+        if self.mcp.scope == "project" and self.mcp.project_path:
+            self.scope_combo.setCurrentIndex(1)
+            idx = self.proj_path_combo.findData(self.mcp.project_path)
+            if idx >= 0:
+                self.proj_path_combo.setCurrentIndex(idx)
+            else:
+                home = os.path.expanduser("~")
+                short_p = self.mcp.project_path.replace(home, "~")
+                self.proj_path_combo.addItem(f"{os.path.basename(self.mcp.project_path)} ({short_p})", self.mcp.project_path)
+                self.proj_path_combo.setCurrentIndex(self.proj_path_combo.count() - 1)
+        else:
+            self.scope_combo.setCurrentIndex(0)
+        self._on_scope_changed(self.scope_combo.currentIndex())
         
         if self.mcp.is_remote:
             self.type_combo.setCurrentText("http (Remote SSE / HTTP)")
@@ -350,7 +415,20 @@ class McpEditorDialog(QDialog):
         if index == 1: # switched to JSON
             try:
                 mcp_obj = self._build_mcp_object()
-                d = mcp_obj.to_antigravity_dict() if "Antigravity" in self.agent_name else (mcp_obj.to_claude_dict() if "Claude" in self.agent_name else mcp_obj.to_opencode_dict())
+                if "Antigravity" in self.agent_name:
+                    d = mcp_obj.to_antigravity_dict()
+                elif "Claude" in self.agent_name:
+                    d = mcp_obj.to_claude_dict()
+                elif "OpenCode" in self.agent_name:
+                    d = mcp_obj.to_opencode_dict()
+                elif "Windsurf" in self.agent_name:
+                    d = mcp_obj.to_windsurf_dict()
+                elif "Cursor" in self.agent_name:
+                    d = mcp_obj.to_cursor_dict()
+                elif "Codex" in self.agent_name:
+                    d = mcp_obj.to_codex_dict()
+                else:
+                    d = mcp_obj.to_claude_dict()
                 self.json_edit.setPlainText(json.dumps(d, indent=2))
             except Exception:
                 pass
@@ -360,6 +438,11 @@ class McpEditorDialog(QDialog):
         enabled = self.enabled_check.isChecked()
         type_str = self.type_combo.currentText()
         is_remote = any(k in type_str.lower() for k in ["http", "sse", "remote"])
+
+        scope = self.scope_combo.currentData() or "global"
+        project_path = None
+        if scope == "project":
+            project_path = self.proj_path_combo.currentData() or self.proj_path_combo.currentText().strip()
 
         if is_remote:
             url = self.url_input.text().strip()
@@ -374,7 +457,9 @@ class McpEditorDialog(QDialog):
                 server_type="http" if "http" in type_str.lower() else ("sse" if "sse" in type_str.lower() else "remote"),
                 url=url,
                 headers=headers,
-                enabled=enabled
+                enabled=enabled,
+                scope=scope,
+                project_path=project_path
             )
         else:
             cmd = self.cmd_input.text().strip()
@@ -392,7 +477,9 @@ class McpEditorDialog(QDialog):
                 command=cmd if cmd else None,
                 args=args,
                 env=env,
-                enabled=enabled
+                enabled=enabled,
+                scope=scope,
+                project_path=project_path
             )
 
     def _on_save(self):
@@ -407,6 +494,8 @@ class McpEditorDialog(QDialog):
                     return
                 # Create MCP from JSON dict
                 url = data.get("url", "")
+                scope = self.scope_combo.currentData() or "global"
+                project_path = self.proj_path_combo.currentData() if scope == "project" else None
                 self.result_mcp = McpServer(
                     name=name,
                     server_type=data.get("type", "http" if url else "stdio"),
@@ -416,6 +505,8 @@ class McpEditorDialog(QDialog):
                     url=url if url else None,
                     headers=data.get("headers", {}),
                     enabled=data.get("enabled", self.enabled_check.isChecked()),
+                    scope=scope,
+                    project_path=project_path,
                     raw_data=data
                 )
                 self.accept()
@@ -432,3 +523,4 @@ class McpEditorDialog(QDialog):
 
         self.result_mcp = self._build_mcp_object()
         self.accept()
+

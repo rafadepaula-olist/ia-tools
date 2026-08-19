@@ -6,6 +6,9 @@ Compatível nativamente com:
 - 🚀 **Antigravity CLI** (`agy` / `gemini`)
 - 🟣 **Claude Code** (`claude`) — *com suporte a escopos Globais, por Projeto e integrações Cloud Claude.ai*
 - ⚡ **OpenCode** (`opencode`)
+- 🟧 **Codex** (`codex` / `.agents`)
+- 🌊 **Windsurf** (`windsurf` / `codeium`)
+- 🖱️ **Cursor** (`cursor`)
 
 ---
 
@@ -71,6 +74,7 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 ## ✨ Funcionalidades Principais
 
 ### 1. 🔌 Gestão Completa de MCPs (Model Context Protocol)
+* **Descoberta Dinâmica de Agentes**: O aplicativo detecta automaticamente quais ferramentas e CLIs estão instalados no seu computador (Antigravity/Gemini, Claude Code, OpenCode, Codex, Windsurf, Cursor) e renderiza as abas correspondentes sob demanda.
 * **Toggle Switch Visual Instantâneo**: Ative ou desative qualquer servidor MCP com 1 clique (sem perder credenciais, argumentos ou tokens).
 * **Seletor de Workspace / Projeto**: Alterne rapidamente entre a visão Global e os projetos locais (`[PROJ: ~]`, `[PROJ: tinyerp]`, etc.) ou integrações da nuvem (`[CLAUDE.AI]`).
 * **Presets Prontos de 1 Clique**:
@@ -82,7 +86,7 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
   * *Filesystem MCP & Memory MCP (Knowledge Graph)*
   * *Brave Search, Puppeteer, Git, Fetch, Docker, Python UVX*
 * **Editor Visual & Editor JSON Bruto**: Edição tanto por formulário (comando, argumentos, tabela chave-valor de variáveis de ambiente e headers) quanto por código JSON com formatação e validação sintática em tempo real.
-* **Sincronização entre Agentes**: Copie servidores MCP de um agente para outro com 1 clique (ex: Claude ➔ Antigravity ➔ OpenCode).
+* **Sincronização entre Agentes**: Copie servidores MCP de um agente para outro com 1 clique (ex: Claude ➔ Antigravity ➔ OpenCode ➔ Windsurf ➔ Cursor ➔ Codex).
 
 ### 2. 🧩 Gestão de Plugins, Skills & Extensões
 * **Habilitar / Desabilitar**: Alterne o estado de plugins (ex: `superpowers`, `caveman`, `i-have-adhd`, `olist-erp-plugins`, `agy-delegate`) e skills locais.
@@ -99,11 +103,15 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 
 ## 📂 Arquivos de Configuração Monitorados
 
-| Agente | Arquivos de Configuração | Diretórios de Skills / Plugins |
-|---|---|---|
-| 🚀 **Antigravity CLI** | `~/.gemini/settings.json`<br>`~/.gemini/mcp_servers.json`<br>`~/.gemini/extensions/extension-enablement.json` | `~/.gemini/skills/`<br>`~/.gemini/config/skills/`<br>`~/.gemini/extensions/` |
-| 🟣 **Claude Code** | `~/.claude.json` *(global + projetos)*<br>`~/.claude/settings.json` | `~/.claude/plugins/`<br>`~/.claude/skills/` |
-| ⚡ **OpenCode** | `~/.config/opencode/opencode.jsonc` (ou `.json`) | `~/.config/opencode/plugins/`<br>`~/.config/opencode/skills/` |
+| Agente | Arquivos de Configuração | Diretórios de Skills / Plugins | Detecção Automática |
+|---|---|---|---|
+| 🚀 **Antigravity CLI** | `~/.gemini/settings.json`<br>`~/.gemini/mcp_servers.json`<br>`~/.gemini/extensions/extension-enablement.json` | `~/.gemini/skills/`<br>`~/.gemini/config/skills/`<br>`~/.gemini/extensions/` | `~/.gemini`, `~/.antigravity`, CLI `gemini`/`agy` |
+| 🟣 **Claude Code** | `~/.claude.json` *(global + projetos)*<br>`~/.claude/settings.json` | `~/.claude/plugins/`<br>`~/.claude/skills/` | `~/.claude.json`, `~/.claude/`, CLI `claude` |
+| ⚡ **OpenCode** | `~/.config/opencode/opencode.jsonc` (ou `.json`) | `~/.config/opencode/plugins/`<br>`~/.config/opencode/skills/` | `~/.config/opencode/`, CLI `opencode` |
+| 🟧 **Codex** | `~/.codex/config.json`<br>`~/.agents/config.json` | `~/.codex/skills/`<br>`~/.agents/skills/` | `~/.codex`, `~/.agents`, CLI `codex` |
+| 🌊 **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `~/.codeium/windsurf/skills/`<br>`~/.windsurf/skills/` | `~/.codeium/windsurf`, CLI `windsurf` |
+| 🖱️ **Cursor** | `~/.cursor/mcp.json`<br>`~/.config/Cursor/mcp.json` | `~/.cursor/extensions/`<br>`~/.cursor/skills/` | `~/.cursor`, `~/.config/Cursor`, CLI `cursor` |
+
 
 ---
 
@@ -112,8 +120,8 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 O projeto utiliza uma arquitetura desacoplada e extensível. Para adicionar um novo agente:
 
 1. **Model**: Adicione o método `to_<provider>_dict()` em [`models/mcp.py`](models/mcp.py).
-2. **Config Manager**: Crie `config_managers/<provider>.py` herdando de `BaseConfigManager` implementando `list_mcps()`, `save_mcp()`, `toggle_mcp()`, `delete_mcp()`.
-3. **UI**: Registre a nova aba em [`ui/main_window.py`](ui/main_window.py) e adicione o ícone em [`ui/agent_tab.py`](ui/agent_tab.py).
+2. **Config Manager**: Crie `config_managers/<provider>.py` herdando de `BaseConfigManager` implementando `is_installed()`, `list_mcps()`, `save_mcp()`, `toggle_mcp()`, `delete_mcp()`.
+3. **UI**: Registre o novo agente no `PROVIDER_REGISTRY` em [`ui/main_window.py`](ui/main_window.py) e adicione o ícone em [`ui/agent_tab.py`](ui/agent_tab.py).
 4. **Testes & Rebuild**: Adicione os testes em [`tests/test_managers.py`](tests/test_managers.py) e execute `./build.sh`.
 
 👉 **Guia completo para agentes**: Consulte a skill [`.agents/skills/extending-ia-tools-providers/SKILL.md`](.agents/skills/extending-ia-tools-providers/SKILL.md).

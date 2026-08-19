@@ -8,14 +8,19 @@ from typing import Dict, List
 from models.mcp import McpServer
 
 class SyncDialog(QDialog):
-    def __init__(self, managers: dict, initial_source="Antigravity", parent=None):
+    def __init__(self, managers: dict, initial_source: str = "", parent=None):
         super().__init__(parent)
         self.managers = managers
         self.setWindowTitle("Sincronizar Ferramentas entre Agentes (Import / Export)")
         self.resize(580, 520)
-        self._setup_ui(initial_source)
+        
+        available = list(self.managers.keys())
+        if not initial_source or initial_source not in available:
+            initial_source = available[0] if available else ""
+            
+        self._setup_ui(initial_source, available)
 
-    def _setup_ui(self, initial_source: str):
+    def _setup_ui(self, initial_source: str, available: List[str]):
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.setContentsMargins(18, 18, 18, 18)
@@ -27,9 +32,10 @@ class SyncDialog(QDialog):
         src_group = QGroupBox("Origem (Copiar de)")
         s_layout = QVBoxLayout(src_group)
         self.src_combo = QComboBox()
-        self.src_combo.addItems(["Antigravity", "Claude", "OpenCode"])
-        self.src_combo.setCurrentText(initial_source)
-        self.src_combo.currentTextChanged.connect(self._load_source_items)
+        self.src_combo.addItems(available)
+        if initial_source in available:
+            self.src_combo.setCurrentText(initial_source)
+        self.src_combo.currentTextChanged.connect(self._on_source_changed)
         s_layout.addWidget(self.src_combo)
         sel_box.addWidget(src_group)
 
@@ -43,7 +49,7 @@ class SyncDialog(QDialog):
         tgt_group = QGroupBox("Destino (Importar para)")
         t_layout = QVBoxLayout(tgt_group)
         self.tgt_combo = QComboBox()
-        self.tgt_combo.addItems(["Antigravity", "Claude", "OpenCode"])
+        self.tgt_combo.addItems(available)
         # Default target different from source
         for idx in range(self.tgt_combo.count()):
             if self.tgt_combo.itemText(idx) != initial_source:
@@ -53,6 +59,7 @@ class SyncDialog(QDialog):
         sel_box.addWidget(tgt_group)
 
         layout.addLayout(sel_box)
+
 
         # Items List
         items_group = QGroupBox("Selecione os MCP Servers para Sincronizar:")
@@ -95,6 +102,14 @@ class SyncDialog(QDialog):
         layout.addLayout(btn_row)
 
         self._load_source_items()
+
+    def _on_source_changed(self, new_src: str):
+        self._load_source_items()
+        if self.tgt_combo.currentText() == new_src:
+            for idx in range(self.tgt_combo.count()):
+                if self.tgt_combo.itemText(idx) != new_src:
+                    self.tgt_combo.setCurrentIndex(idx)
+                    break
 
     def _load_source_items(self):
         self.list_widget.clear()

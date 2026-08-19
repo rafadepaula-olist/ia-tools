@@ -11,8 +11,8 @@ This skill provides the architectural pattern and step-by-step instructions for 
 
 Adding a provider requires 4 coordinated steps:
 1. Model conversion methods in `models/mcp.py`
-2. Config manager subclass in `config_managers/<provider>.py`
-3. UI tab registration in `ui/main_window.py` and `ui/agent_tab.py`
+2. Config manager subclass in `config_managers/<provider>.py` (implementing `is_installed()`, `list_mcps()`, `save_mcp()`, etc.)
+3. UI registration in `PROVIDER_REGISTRY` in `ui/main_window.py` and `ui/agent_tab.py`
 4. Automated unit test in `tests/test_managers.py`
 
 ```
@@ -21,13 +21,15 @@ Adding a provider requires 4 coordinated steps:
 │                                                             │
 │   ┌───────────────┐     ┌───────────────────────────────┐   │
 │   │ Models Layer  │ ──► │ Config Manager (BaseClass)    │   │
-│   │ (McpServer)   │     │ (read_json, write_json, etc.) │   │
+│   │ (McpServer)   │     │ (read_json, write_json,       │   │
+│   │               │     │  is_installed detection)      │   │
 │   └───────────────┘     └──────────────┬────────────────┘   │
 │                                        │                    │
 │                                        ▼                    │
 │                         ┌───────────────────────────────┐   │
-│                         │ UI Layer (AgentTab + Panels)  │   │
-│                         │ (PyQt6 Main Window & Cards)   │   │
+│                         │ Dynamic UI Layer              │   │
+│                         │ (PROVIDER_REGISTRY Discovery  │   │
+│                         │  + AgentTab & Cards)          │   │
 │                         └───────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -36,13 +38,13 @@ Adding a provider requires 4 coordinated steps:
 
 ## Known Agent Config Paths Reference
 
-| Agent / Provider | Config File Path | MCP Section Key | Skills / Plugins Path |
-|---|---|---|---|
-| **Codex** | `~/.codex/config.json` or `~/.agents/config.json` | `mcpServers` | `~/.agents/skills/` |
-| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` | `~/.codeium/windsurf/skills/` |
-| **Cursor** | `~/.cursor/mcp.json` or `~/.config/Cursor/User/globalStorage/...` | `mcpServers` | `~/.cursor/extensions/` |
-| **Goose** | `~/.config/goose/config.yaml` or `~/.goose/mcp.json` | `extensions` / `mcp` | `~/.goose/recipes/` |
-| **Zed** | `~/.config/zed/settings.json` | `context_servers` | `~/.config/zed/extensions/` |
+| Agent / Provider | Config File Path | MCP Section Key | Skills / Plugins Path | Detection Trigger |
+|---|---|---|---|---|
+| **Codex** | `~/.codex/config.json` or `~/.agents/config.json` | `mcpServers` | `~/.agents/skills/` | `~/.codex` or `codex` CLI |
+| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` | `~/.codeium/windsurf/skills/` | `~/.codeium/windsurf` or `windsurf` CLI |
+| **Cursor** | `~/.cursor/mcp.json` or `~/.config/Cursor/User/globalStorage/...` | `mcpServers` | `~/.cursor/extensions/` | `~/.cursor` or `cursor` CLI |
+| **Goose** | `~/.config/goose/config.yaml` or `~/.goose/mcp.json` | `extensions` / `mcp` | `~/.goose/recipes/` | `~/.config/goose` or `goose` CLI |
+| **Zed** | `~/.config/zed/settings.json` | `context_servers` | `~/.config/zed/extensions/` | `~/.config/zed` or `zed` CLI |
 
 ---
 
@@ -75,7 +77,7 @@ def to_windsurf_dict(self) -> Dict[str, Any]:
 
 ### Step 2: Implement `config_managers/<provider>.py`
 
-Create a new manager inheriting from `BaseConfigManager`.
+Create a new manager inheriting from `BaseConfigManager`. Make sure to implement `is_installed()` so IA Tools Manager can automatically discover whether this tool is installed on the user's computer.
 
 ```python
 # config_managers/windsurf.py
@@ -92,6 +94,16 @@ class WindsurfConfigManager(BaseConfigManager):
         self.config_dir = os.path.join(home, ".codeium", "windsurf")
         self.mcp_file = os.path.join(self.config_dir, "mcp_config.json")
         self.skills_dir = os.path.join(self.config_dir, "skills")
+
+    def is_installed(self) -> bool:
+        """Determines if Windsurf is installed or present on the system."""
+        if os.path.exists(self.config_dir) and os.path.isdir(self.config_dir):
+            return True
+        if os.path.exists(self.mcp_file):
+            return True
+        if shutil.which("windsurf"):
+            return True
+        return False
 
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
@@ -235,23 +247,23 @@ __all__ = [
 
 ---
 
-### Step 3: Register in UI (`ui/main_window.py` & `ui/agent_tab.py`)
+### Step 3: Register in Dynamic Discovery Registry (`ui/main_window.py` & `ui/agent_tab.py`)
 
-1. In `ui/main_window.py`:
+1. In `ui/main_window.py`, register the provider in `PROVIDER_REGISTRY`:
 ```python
-# Initialize manager
-self.managers["Windsurf"] = WindsurfConfigManager()
-
-# Add Tab
-self.windsurf_tab = AgentTab(
-    agent_name="Windsurf",
-    config_manager=self.managers["Windsurf"],
-    sync_callback=self._sync_single_mcp,
-    parent=self
-)
-self.windsurf_tab.statusChanged.connect(self._set_status)
-self.main_tabs.addTab(self.windsurf_tab, qta.icon('fa5s.wind', color='#10b981'), "🌊 Windsurf")
+PROVIDER_REGISTRY = [
+    ...,
+    {
+        "name": "Windsurf",
+        "manager_cls": WindsurfConfigManager,
+        "icon": "fa5s.wind",
+        "color": "#10b981",
+        "label": "🌊 Windsurf",
+        "desc": "Codeium Windsurf IDE (~/.codeium/windsurf)"
+    }
+]
 ```
+> **Note**: Because tabs are discovered dynamically, `MainWindow.discover_agents()` will call `WindsurfConfigManager.is_installed()` and display the Windsurf tab automatically only when installed on the user's machine!
 
 2. In `ui/agent_tab.py` (Icon Banner Map):
 ```python
@@ -268,10 +280,11 @@ icon_map = {
 
 ### Step 4: Add Unit Tests & Rebuild
 
-1. In `tests/test_managers.py`, add a test case:
+1. In `tests/test_managers.py`, add test cases for listing and detection:
 ```python
-def test_windsurf_list(self):
+def test_windsurf_manager(self):
     mgr = WindsurfConfigManager()
+    self.assertIsInstance(mgr.is_installed(), bool)
     mcps = mgr.list_mcps()
     self.assertIsInstance(mcps, list)
 ```

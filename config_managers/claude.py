@@ -126,9 +126,25 @@ class ClaudeConfigManager(BaseConfigManager):
             source_file=source_file
         )
 
-    def save_mcp(self, mcp: McpServer) -> bool:
+    def save_mcp(self, mcp: McpServer, old_mcp: Optional[McpServer] = None) -> bool:
         claude_data = self.read_json_file(self.claude_json_file)
         mcp_dict = mcp.to_claude_dict()
+
+        # If old_mcp is provided and had a different name or project_path, remove the old entry
+        if old_mcp:
+            old_name = old_mcp.name
+            old_proj = old_mcp.project_path
+            if old_proj and "projects" in claude_data and old_proj in claude_data["projects"]:
+                p_data = claude_data["projects"][old_proj]
+                if "mcpServers" in p_data:
+                    p_data["mcpServers"].pop(old_name, None)
+                if "_disabledMcpServers" in p_data:
+                    p_data["_disabledMcpServers"].pop(old_name, None)
+            else:
+                if "mcpServers" in claude_data:
+                    claude_data["mcpServers"].pop(old_name, None)
+                if "_disabledMcpServers" in claude_data:
+                    claude_data["_disabledMcpServers"].pop(old_name, None)
 
         if mcp.project_path:
             if "projects" not in claude_data:
@@ -164,6 +180,39 @@ class ClaudeConfigManager(BaseConfigManager):
                 claude_data["_disabledMcpServers"][mcp.name] = mcp_dict
 
         return self.write_json_file(self.claude_json_file, claude_data)
+
+    def convert_mcp_to_global(self, mcp: McpServer) -> bool:
+        claude_data = self.read_json_file(self.claude_json_file)
+        old_project_path = mcp.project_path
+
+        # 1. Remove from project-level if it was scoped to a project
+        if old_project_path and "projects" in claude_data and old_project_path in claude_data["projects"]:
+            p_data = claude_data["projects"][old_project_path]
+            if "mcpServers" in p_data:
+                p_data["mcpServers"].pop(mcp.name, None)
+            if "_disabledMcpServers" in p_data:
+                p_data["_disabledMcpServers"].pop(mcp.name, None)
+
+        # 2. Insert into root global mcpServers / _disabledMcpServers
+        if "mcpServers" not in claude_data:
+            claude_data["mcpServers"] = {}
+        if "_disabledMcpServers" not in claude_data:
+            claude_data["_disabledMcpServers"] = {}
+
+        claude_data["mcpServers"].pop(mcp.name, None)
+        claude_data["_disabledMcpServers"].pop(mcp.name, None)
+
+        mcp_dict = mcp.to_claude_dict()
+        if mcp.enabled:
+            claude_data["mcpServers"][mcp.name] = mcp_dict
+        else:
+            claude_data["_disabledMcpServers"][mcp.name] = mcp_dict
+
+        mcp.scope = "global"
+        mcp.project_path = None
+
+        return self.write_json_file(self.claude_json_file, claude_data)
+
 
     def toggle_mcp(self, name: str, enable: bool, project_path: Optional[str] = None) -> bool:
         mcps = self.list_mcps()
@@ -362,3 +411,20 @@ class ClaudeConfigManager(BaseConfigManager):
 
     def save_raw_config(self, data: Dict[str, Any]) -> bool:
         return self.write_json_file(self.claude_json_file, data)
+
+    def is_installed(self) -> bool:
+        """Detects if Claude Code is installed or present on the system."""
+        # 1. Config files and directories
+        if os.path.exists(self.claude_json_file) and os.path.isfile(self.claude_json_file):
+            return True
+        if os.path.exists(self.claude_dir) and os.path.isdir(self.claude_dir):
+            return True
+        if os.path.exists(self.settings_file) or os.path.exists(self.plugins_dir) or os.path.exists(self.skills_dir):
+            return True
+
+        # 2. Executables in PATH
+        if shutil.which("claude"):
+            return True
+
+        return False
+

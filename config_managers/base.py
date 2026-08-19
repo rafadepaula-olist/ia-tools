@@ -152,6 +152,9 @@ class BaseConfigManager:
             (os.path.join(project_path, ".gemini", "skills"), ".gemini/skills"),
             (os.path.join(project_path, ".claude", "skills"), ".claude/skills"),
             (os.path.join(project_path, ".opencode", "skills"), ".opencode/skills"),
+            (os.path.join(project_path, ".codex", "skills"), ".codex/skills"),
+            (os.path.join(project_path, ".windsurf", "skills"), ".windsurf/skills"),
+            (os.path.join(project_path, ".cursor", "skills"), ".cursor/skills"),
             (os.path.join(project_path, "skills"), "skills")
         ]
 
@@ -211,3 +214,17 @@ description: "{clean_desc}"
         with open(skill_file, 'w', encoding='utf-8') as f:
             f.write(content)
         return skill_dir
+
+    def convert_mcp_to_global(self, mcp) -> bool:
+        """Converts a project-scoped MCP to global scope."""
+        mcp.scope = "global"
+        mcp.project_path = None
+        if hasattr(self, 'save_mcp'):
+            return self.save_mcp(mcp)
+        return False
+
+    def is_installed(self) -> bool:
+        """Determines if the agent tool or configuration is present on the user system."""
+        return False
+
+

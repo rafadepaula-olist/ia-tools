@@ -4,7 +4,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config_managers import AntigravityConfigManager, ClaudeConfigManager, OpenCodeConfigManager
+from config_managers import (
+    AntigravityConfigManager, ClaudeConfigManager, OpenCodeConfigManager,
+    CodexConfigManager, WindsurfConfigManager, CursorConfigManager
+)
 from models import McpServer, PluginSkill
 
 class TestConfigManagers(unittest.TestCase):
@@ -50,5 +53,49 @@ class TestConfigManagers(unittest.TestCase):
         self.assertIsInstance(mcps, list)
         self.assertIsInstance(plugins, list)
 
+    def test_codex_list(self):
+        mgr = CodexConfigManager()
+        mcps = mgr.list_mcps()
+        print(f'Codex MCPs found: {len(mcps)}')
+        plugins = mgr.list_plugins_and_skills()
+        print(f'Codex Plugins/Skills found: {len(plugins)}')
+        self.assertIsInstance(mcps, list)
+        self.assertIsInstance(plugins, list)
+
+    def test_windsurf_list(self):
+        mgr = WindsurfConfigManager()
+        mcps = mgr.list_mcps()
+        print(f'Windsurf MCPs found: {len(mcps)}')
+        plugins = mgr.list_plugins_and_skills()
+        print(f'Windsurf Plugins/Skills found: {len(plugins)}')
+        self.assertIsInstance(mcps, list)
+        self.assertIsInstance(plugins, list)
+
+    def test_cursor_list(self):
+        mgr = CursorConfigManager()
+        mcps = mgr.list_mcps()
+        print(f'Cursor MCPs found: {len(mcps)}')
+        plugins = mgr.list_plugins_and_skills()
+        print(f'Cursor Plugins/Skills found: {len(plugins)}')
+        self.assertIsInstance(mcps, list)
+        self.assertIsInstance(plugins, list)
+
+    def test_detection_methods(self):
+        ag_mgr = AntigravityConfigManager()
+        cl_mgr = ClaudeConfigManager()
+        oc_mgr = OpenCodeConfigManager()
+        cd_mgr = CodexConfigManager()
+        ws_mgr = WindsurfConfigManager()
+        cs_mgr = CursorConfigManager()
+
+        self.assertIsInstance(ag_mgr.is_installed(), bool)
+        self.assertIsInstance(cl_mgr.is_installed(), bool)
+        self.assertIsInstance(oc_mgr.is_installed(), bool)
+        self.assertIsInstance(cd_mgr.is_installed(), bool)
+        self.assertIsInstance(ws_mgr.is_installed(), bool)
+        self.assertIsInstance(cs_mgr.is_installed(), bool)
+
 if __name__ == '__main__':
     unittest.main()
+
+

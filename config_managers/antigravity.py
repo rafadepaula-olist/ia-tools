@@ -261,3 +261,26 @@ class AntigravityConfigManager(BaseConfigManager):
 
     def save_raw_config(self, data: Dict[str, Any]) -> bool:
         return self.write_json_file(self.settings_file, data)
+
+    def is_installed(self) -> bool:
+        """Detects if Antigravity / Gemini CLI is installed or present on the system."""
+        # 1. Check Gemini / Antigravity config directory and files
+        if os.path.exists(self.gemini_dir) and os.path.isdir(self.gemini_dir):
+            return True
+        home = os.path.expanduser("~")
+        if os.path.exists(os.path.join(home, ".antigravity")):
+            return True
+        if os.path.exists(os.path.join(home, ".antigravity-ide")):
+            return True
+        if os.path.exists(self.settings_file) or os.path.exists(self.mcp_servers_file):
+            return True
+        if os.path.exists(self.skills_dir) or os.path.exists(self.config_skills_dir):
+            return True
+
+        # 2. Check executables in PATH
+        for cmd in ("antigravity", "gemini", "agy"):
+            if shutil.which(cmd):
+                return True
+
+        return False
+

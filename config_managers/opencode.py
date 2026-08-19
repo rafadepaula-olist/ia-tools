@@ -268,3 +268,23 @@ class OpenCodeConfigManager(BaseConfigManager):
 
     def save_raw_config(self, data: Dict[str, Any]) -> bool:
         return self.write_json_file(self._get_active_config_path(), data)
+
+    def is_installed(self) -> bool:
+        """Detects if OpenCode is installed or present on the system."""
+        # 1. Config directory and files
+        if os.path.exists(self.config_dir) and os.path.isdir(self.config_dir):
+            return True
+        if os.path.exists(self.jsonc_file) or os.path.exists(self.json_file):
+            return True
+        home = os.path.expanduser("~")
+        if os.path.exists(os.path.join(home, ".opencode")):
+            return True
+        if os.path.exists(self.plugins_dir) or os.path.exists(self.skills_dir):
+            return True
+
+        # 2. Executables in PATH
+        if shutil.which("opencode"):
+            return True
+
+        return False
+

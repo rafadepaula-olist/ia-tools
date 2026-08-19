@@ -44,7 +44,10 @@ class AgentTab(QWidget):
         icon_map = {
             "Antigravity": ('fa5s.rocket', '#6366f1'),
             "Claude": ('fa5s.brain', '#c084fc'),
-            "OpenCode": ('fa5s.bolt', '#38bdf8')
+            "OpenCode": ('fa5s.bolt', '#38bdf8'),
+            "Codex": ('fa5s.code', '#f59e0b'),
+            "Windsurf": ('fa5s.wind', '#10b981'),
+            "Cursor": ('fa5s.mouse-pointer', '#06b6d4')
         }
         icon_name, icon_color = icon_map.get(self.agent_name, ('fa5s.robot', '#38bdf8'))
         

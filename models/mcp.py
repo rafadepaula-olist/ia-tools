@@ -100,3 +100,55 @@ class McpServer:
             if self.env:
                 d["environment"] = self.env
         return d
+
+    def to_codex_dict(self) -> Dict[str, Any]:
+        """Convert to Codex / OpenAI Agents MCP format."""
+        if self.is_remote:
+            d = {}
+            if self.url:
+                d["url"] = self.url
+            if self.headers:
+                d["headers"] = self.headers
+            return d
+        else:
+            d = {"command": self.command or "npx"}
+            if self.args:
+                d["args"] = self.args
+            if self.env:
+                d["env"] = self.env
+            return d
+
+    def to_windsurf_dict(self) -> Dict[str, Any]:
+        """Convert to Windsurf / Codeium MCP format."""
+        if self.is_remote:
+            d = {}
+            if self.url:
+                d["serverUrl"] = self.url
+            if self.headers:
+                d["headers"] = self.headers
+            return d
+        else:
+            d = {"command": self.command or "npx"}
+            if self.args:
+                d["args"] = self.args
+            if self.env:
+                d["env"] = self.env
+            return d
+
+    def to_cursor_dict(self) -> Dict[str, Any]:
+        """Convert to Cursor MCP format."""
+        if self.is_remote:
+            d = {}
+            if self.url:
+                d["url"] = self.url
+            if self.headers:
+                d["headers"] = self.headers
+            return d
+        else:
+            d = {"command": self.command or "npx"}
+            if self.args:
+                d["args"] = self.args
+            if self.env:
+                d["env"] = self.env
+            return d
+
