@@ -196,13 +196,26 @@ QTableWidget {
     border-radius: 6px;
     gridline-color: #1e2230;
     color: #e2e8f0;
+    font-size: 13px;
 }
 QTableWidget::item {
-    padding: 6px 8px;
+    padding: 4px 8px;
+    font-size: 13px;
 }
 QTableWidget::item:selected {
     background-color: #242b3d;
     color: #ffffff;
+}
+QTableWidget QLineEdit, QTableView QLineEdit {
+    background-color: #1a1e2d;
+    color: #f8fafc;
+    border: 1px solid #6366f1;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin: 0px;
+    font-size: 13px;
+    font-family: inherit;
+    min-height: 20px;
 }
 QHeaderView::section {
     background-color: #181c27;

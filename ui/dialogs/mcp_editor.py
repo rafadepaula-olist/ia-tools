@@ -264,8 +264,9 @@ class McpEditorDialog(QDialog):
         self.env_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.env_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.env_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.env_table.verticalHeader().setDefaultSectionSize(34)
         self.env_table.setColumnWidth(2, 60)
-        self.env_table.setMaximumHeight(100)
+        self.env_table.setMinimumHeight(110)
         std_layout.addWidget(self.env_table)
 
         f_layout.addWidget(self.stdio_group)
@@ -297,8 +298,9 @@ class McpEditorDialog(QDialog):
         self.hdr_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.hdr_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.hdr_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.hdr_table.verticalHeader().setDefaultSectionSize(34)
         self.hdr_table.setColumnWidth(2, 60)
-        self.hdr_table.setMaximumHeight(90)
+        self.hdr_table.setMinimumHeight(110)
         http_layout.addWidget(self.hdr_table)
 
         f_layout.addWidget(self.http_group)
@@ -322,6 +324,7 @@ class McpEditorDialog(QDialog):
     def _add_env_row(self, key="", val=""):
         row = self.env_table.rowCount()
         self.env_table.insertRow(row)
+        self.env_table.setRowHeight(row, 34)
         self.env_table.setItem(row, 0, QTableWidgetItem(key))
         self.env_table.setItem(row, 1, QTableWidgetItem(val))
         del_btn = QPushButton()
@@ -332,6 +335,7 @@ class McpEditorDialog(QDialog):
     def _add_hdr_row(self, key="", val=""):
         row = self.hdr_table.rowCount()
         self.hdr_table.insertRow(row)
+        self.hdr_table.setRowHeight(row, 34)
         self.hdr_table.setItem(row, 0, QTableWidgetItem(key))
         self.hdr_table.setItem(row, 1, QTableWidgetItem(val))
         del_btn = QPushButton()
