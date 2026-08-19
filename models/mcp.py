@@ -12,6 +12,8 @@ class McpServer:
     url: Optional[str] = None
     headers: Dict[str, str] = field(default_factory=dict)
     enabled: bool = True
+    shelved: bool = False
+    shelved_at: Optional[str] = None
     scope: str = "global"  # 'global' or 'project'
     project_path: Optional[str] = None  # e.g. '/home/foo.bar'
     raw_data: Dict[str, Any] = field(default_factory=dict)
@@ -151,4 +153,43 @@ class McpServer:
             if self.env:
                 d["env"] = self.env
             return d
+
+    def to_shelved_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for shelved storage."""
+        return {
+            "name": self.name,
+            "server_type": self.server_type,
+            "command": self.command,
+            "args": self.args,
+            "env": self.env,
+            "url": self.url,
+            "headers": self.headers,
+            "enabled": self.enabled,
+            "shelved": True,
+            "shelved_at": self.shelved_at,
+            "scope": self.scope,
+            "project_path": self.project_path,
+            "raw_data": self.raw_data,
+            "source_file": self.source_file
+        }
+
+    @classmethod
+    def from_shelved_dict(cls, data: Dict[str, Any]) -> "McpServer":
+        """Recreate McpServer instance from shelved dictionary."""
+        return cls(
+            name=data.get("name", ""),
+            server_type=data.get("server_type", "stdio"),
+            command=data.get("command"),
+            args=data.get("args", []),
+            env=data.get("env", {}),
+            url=data.get("url"),
+            headers=data.get("headers", {}),
+            enabled=data.get("enabled", True),
+            shelved=True,
+            shelved_at=data.get("shelved_at"),
+            scope=data.get("scope", "global"),
+            project_path=data.get("project_path"),
+            raw_data=data.get("raw_data", {}),
+            source_file=data.get("source_file", "")
+        )
 

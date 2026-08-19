@@ -5,6 +5,7 @@ class Badge(QLabel):
     COLORS = {
         "active": ("#064e3b", "#34d399", "#059669"),
         "inactive": ("#3f1d24", "#f87171", "#991b1b"),
+        "shelved": ("#451a03", "#fbbf24", "#d97706"),
         "stdio": ("#1e1b4b", "#a5b4fc", "#4f46e5"),
         "http": ("#0c4a6e", "#38bdf8", "#0284c7"),
         "sse": ("#3b0764", "#c084fc", "#7e22ce"),

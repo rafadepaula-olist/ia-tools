@@ -6,6 +6,8 @@ from models.plugin import PluginSkill
 from .base import BaseConfigManager
 
 class AntigravityConfigManager(BaseConfigManager):
+    AGENT_NAME = "Antigravity"
+
     def __init__(self, base_dir: Optional[str] = None):
         home = os.path.expanduser("~")
         self.gemini_dir = os.path.join(home, ".gemini")
@@ -16,6 +18,9 @@ class AntigravityConfigManager(BaseConfigManager):
         self.skills_dir = os.path.join(self.gemini_dir, "skills")
         self.config_skills_dir = os.path.join(self.gemini_dir, "config", "skills")
         self.skills_state_file = os.path.join(self.gemini_dir, "skills_state.json")
+
+    def _get_shelved_path(self) -> str:
+        return self.get_shelved_filepath(self.settings_file)
 
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
@@ -45,6 +50,12 @@ class AntigravityConfigManager(BaseConfigManager):
                 continue
             seen.add(name)
             servers.append(self._dict_to_mcp(name, cfg, enabled=False, source_file=self.settings_file))
+
+        # Shelved / Temporarily Removed MCPs
+        for sm in self.read_shelved_mcps(self._get_shelved_path()):
+            if sm.name not in seen:
+                seen.add(sm.name)
+                servers.append(sm)
 
         return sorted(servers, key=lambda x: x.name.lower())
 
@@ -79,6 +90,13 @@ class AntigravityConfigManager(BaseConfigManager):
         )
 
     def save_mcp(self, mcp: McpServer) -> bool:
+        if getattr(mcp, 'shelved', False):
+            self.delete_mcp(mcp.name)
+            return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+        # Ensure removed from shelved sidecar when saving actively
+        self.delete_shelved_mcp(self._get_shelved_path(), mcp.name)
+
         settings_data = self.read_json_file(self.settings_file)
         if "mcpServers" not in settings_data:
             settings_data["mcpServers"] = {}
@@ -108,6 +126,22 @@ class AntigravityConfigManager(BaseConfigManager):
 
         return res
 
+    def shelve_mcp(self, mcp: McpServer) -> bool:
+        """Temporarily removes MCP from provider config and stores in sidecar shelved file."""
+        self.delete_mcp(mcp.name)
+        return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+    def unshelve_mcp(self, mcp: McpServer) -> bool:
+        """Restores a shelved MCP back into the active provider config."""
+        restored = self.remove_shelved_mcp(self._get_shelved_path(), mcp.name)
+        if restored:
+            restored.shelved = False
+            restored.enabled = True
+            return self.save_mcp(restored)
+        mcp.shelved = False
+        mcp.enabled = True
+        return self.save_mcp(mcp)
+
     def toggle_mcp(self, name: str, enable: bool) -> bool:
         mcps = self.list_mcps()
         target = next((m for m in mcps if m.name == name), None)
@@ -117,6 +151,8 @@ class AntigravityConfigManager(BaseConfigManager):
         return self.save_mcp(target)
 
     def delete_mcp(self, name: str) -> bool:
+        self.delete_shelved_mcp(self._get_shelved_path(), name)
+
         settings_data = self.read_json_file(self.settings_file)
         modified = False
         if "mcpServers" in settings_data and name in settings_data["mcpServers"]:
@@ -135,6 +171,7 @@ class AntigravityConfigManager(BaseConfigManager):
                 self.write_json_file(self.mcp_servers_file, mcp_servers_data)
             return True
         return False
+
 
     def list_plugins_and_skills(self, project_path: Optional[str] = None) -> List[PluginSkill]:
         items: List[PluginSkill] = []

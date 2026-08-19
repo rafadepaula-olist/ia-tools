@@ -6,6 +6,8 @@ from models.plugin import PluginSkill
 from .base import BaseConfigManager
 
 class OpenCodeConfigManager(BaseConfigManager):
+    AGENT_NAME = "OpenCode"
+
     def __init__(self):
         home = os.path.expanduser("~")
         self.config_dir = os.path.join(home, ".config", "opencode")
@@ -21,8 +23,12 @@ class OpenCodeConfigManager(BaseConfigManager):
             return self.json_file
         return self.jsonc_file
 
+    def _get_shelved_path(self) -> str:
+        return self.get_shelved_filepath(self._get_active_config_path())
+
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
+        seen = set()
         cfg_path = self._get_active_config_path()
         data = self.read_json_file(cfg_path)
         mcp_dict = data.get("mcp", {})
@@ -46,6 +52,7 @@ class OpenCodeConfigManager(BaseConfigManager):
             elif isinstance(cmd_raw, str):
                 command = cmd_raw
 
+            seen.add(name)
             servers.append(McpServer(
                 name=name,
                 server_type=server_type,
@@ -59,9 +66,21 @@ class OpenCodeConfigManager(BaseConfigManager):
                 source_file=cfg_path
             ))
 
+        # Shelved MCPs
+        for sm in self.read_shelved_mcps(self._get_shelved_path()):
+            if sm.name not in seen:
+                seen.add(sm.name)
+                servers.append(sm)
+
         return sorted(servers, key=lambda x: x.name.lower())
 
     def save_mcp(self, mcp: McpServer) -> bool:
+        if getattr(mcp, 'shelved', False):
+            self.delete_mcp(mcp.name)
+            return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+        self.delete_shelved_mcp(self._get_shelved_path(), mcp.name)
+
         cfg_path = self._get_active_config_path()
         data = self.read_json_file(cfg_path)
         if "mcp" not in data:
@@ -70,15 +89,32 @@ class OpenCodeConfigManager(BaseConfigManager):
         data["mcp"][mcp.name] = mcp.to_opencode_dict()
         return self.write_json_file(cfg_path, data)
 
+    def shelve_mcp(self, mcp: McpServer) -> bool:
+        """Temporarily removes MCP from OpenCode config and stores in sidecar shelved file."""
+        self.delete_mcp(mcp.name)
+        return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+    def unshelve_mcp(self, mcp: McpServer) -> bool:
+        """Restores a shelved MCP back into the active OpenCode config."""
+        restored = self.remove_shelved_mcp(self._get_shelved_path(), mcp.name)
+        if restored:
+            restored.shelved = False
+            restored.enabled = True
+            return self.save_mcp(restored)
+        mcp.shelved = False
+        mcp.enabled = True
+        return self.save_mcp(mcp)
+
     def toggle_mcp(self, name: str, enable: bool) -> bool:
-        cfg_path = self._get_active_config_path()
-        data = self.read_json_file(cfg_path)
-        if "mcp" in data and name in data["mcp"]:
-            data["mcp"][name]["enabled"] = enable
-            return self.write_json_file(cfg_path, data)
-        return False
+        mcps = self.list_mcps()
+        target = next((m for m in mcps if m.name == name), None)
+        if not target:
+            return False
+        target.enabled = enable
+        return self.save_mcp(target)
 
     def delete_mcp(self, name: str) -> bool:
+        self.delete_shelved_mcp(self._get_shelved_path(), name)
         cfg_path = self._get_active_config_path()
         data = self.read_json_file(cfg_path)
         if "mcp" in data and name in data["mcp"]:

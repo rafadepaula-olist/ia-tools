@@ -217,10 +217,88 @@ description: "{clean_desc}"
 
     def convert_mcp_to_global(self, mcp) -> bool:
         """Converts a project-scoped MCP to global scope."""
+        old_project_path = getattr(mcp, 'project_path', None)
         mcp.scope = "global"
         mcp.project_path = None
+        if getattr(mcp, 'shelved', False) and hasattr(self, '_get_shelved_path'):
+            shelved_path = self._get_shelved_path()
+            self.delete_shelved_mcp(shelved_path, mcp.name, project_path=old_project_path)
+            return self.write_shelved_mcp(shelved_path, mcp)
         if hasattr(self, 'save_mcp'):
             return self.save_mcp(mcp)
+        return False
+
+    @classmethod
+    def get_shelved_filepath(cls, config_filepath: str) -> str:
+        """Returns the sidecar shelved JSON filepath right next to the active config file."""
+        return f"{config_filepath}.shelved"
+
+    @classmethod
+    def read_shelved_mcps(cls, shelved_filepath: str) -> list:
+        from models.mcp import McpServer
+        if not os.path.exists(shelved_filepath):
+            return []
+        data = cls.read_json_file(shelved_filepath)
+        servers: list[McpServer] = []
+        for key, item in data.items():
+            if isinstance(item, dict):
+                servers.append(McpServer.from_shelved_dict(item))
+        return sorted(servers, key=lambda x: x.name.lower())
+
+    @classmethod
+    def write_shelved_mcp(cls, shelved_filepath: str, mcp) -> bool:
+        data = cls.read_json_file(shelved_filepath) if os.path.exists(shelved_filepath) else {}
+        key = f"{mcp.project_path}::{mcp.name}" if getattr(mcp, 'project_path', None) else mcp.name
+        mcp.shelved = True
+        mcp.shelved_at = datetime.datetime.now().isoformat()
+        data[key] = mcp.to_shelved_dict()
+        return cls.write_json_file(shelved_filepath, data, backup=False)
+
+    @classmethod
+    def remove_shelved_mcp(cls, shelved_filepath: str, mcp_name: str, project_path: Optional[str] = None):
+        from models.mcp import McpServer
+        if not os.path.exists(shelved_filepath):
+            return None
+        data = cls.read_json_file(shelved_filepath)
+        key = f"{project_path}::{mcp_name}" if project_path else mcp_name
+
+        item = data.pop(key, None)
+        if not item and project_path:
+            item = data.pop(mcp_name, None)
+        elif not item and not project_path:
+            for k in list(data.keys()):
+                if k == mcp_name or k.endswith(f"::{mcp_name}"):
+                    item = data.pop(k, None)
+                    break
+
+        if item:
+            cls.write_json_file(shelved_filepath, data, backup=False)
+            restored = McpServer.from_shelved_dict(item)
+            restored.shelved = False
+            restored.shelved_at = None
+            return restored
+        return None
+
+    @classmethod
+    def delete_shelved_mcp(cls, shelved_filepath: str, mcp_name: str, project_path: Optional[str] = None) -> bool:
+        if not os.path.exists(shelved_filepath):
+            return False
+        data = cls.read_json_file(shelved_filepath)
+        key = f"{project_path}::{mcp_name}" if project_path else mcp_name
+
+        deleted = False
+        if key in data:
+            del data[key]
+            deleted = True
+        else:
+            for k in list(data.keys()):
+                if k == mcp_name or k.endswith(f"::{mcp_name}"):
+                    del data[k]
+                    deleted = True
+                    break
+
+        if deleted:
+            return cls.write_json_file(shelved_filepath, data, backup=False)
         return False
 
     def is_installed(self) -> bool:

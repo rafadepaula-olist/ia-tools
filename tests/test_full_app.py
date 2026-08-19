@@ -363,6 +363,131 @@ Do not optimize without explain plan.
         self.assertEqual(ag_mcps[0].url, "https://mcp.service.com/sse")
         self.assertEqual(ag_mcps[0].headers.get("Authorization"), "Bearer key123")
 
+    def test_shelved_mcp_lifecycle(self):
+        # 1. Test Antigravity Shelving with sidecar file
+        ag = AntigravityConfigManager()
+        fake_gemini_dir = os.path.join(self.tmp_dir, "gemini_shelve_test")
+        os.makedirs(fake_gemini_dir, exist_ok=True)
+        ag.settings_file = os.path.join(fake_gemini_dir, "settings.json")
+        ag.mcp_servers_file = os.path.join(fake_gemini_dir, "mcp_servers.json")
+
+        mcp1 = McpServer(
+            name="heavy-mcp",
+            server_type="stdio",
+            command="npx",
+            args=["-y", "heavy-tool"],
+            enabled=True
+        )
+        ag.save_mcp(mcp1)
+        self.assertEqual(len(ag.list_mcps()), 1)
+        self.assertFalse(ag.list_mcps()[0].shelved)
+
+        # Shelve mcp1
+        self.assertTrue(ag.shelve_mcp(mcp1))
+        
+        # Verify it is completely removed from settings.json and mcp_servers.json
+        s_data = ag.read_json_file(ag.settings_file)
+        self.assertNotIn("heavy-mcp", s_data.get("mcpServers", {}))
+        self.assertNotIn("heavy-mcp", s_data.get("_disabledMcpServers", {}))
+
+        # Verify sidecar file was created alongside settings.json
+        sidecar_path = ag._get_shelved_path()
+        self.assertTrue(os.path.exists(sidecar_path))
+        
+        # Verify list_mcps returns it with shelved=True
+        mcps_after_shelve = ag.list_mcps()
+        self.assertEqual(len(mcps_after_shelve), 1)
+        self.assertTrue(mcps_after_shelve[0].shelved)
+        self.assertEqual(mcps_after_shelve[0].name, "heavy-mcp")
+
+        # Unshelve mcp1
+        self.assertTrue(ag.unshelve_mcp(mcps_after_shelve[0]))
+        mcps_restored = ag.list_mcps()
+        self.assertEqual(len(mcps_restored), 1)
+        self.assertFalse(mcps_restored[0].shelved)
+        self.assertTrue(mcps_restored[0].enabled)
+
+        # Verify it is back in settings.json
+        s_data_restored = ag.read_json_file(ag.settings_file)
+        self.assertIn("heavy-mcp", s_data_restored.get("mcpServers", {}))
+
+        # 2. Test Claude Project-Scoped Shelving with sidecar
+        cl = ClaudeConfigManager()
+        fake_claude_json = os.path.join(self.tmp_dir, "claude_shelve_test.json")
+        fake_claude_dir = os.path.join(self.tmp_dir, "fake_claude_shelve_dir")
+        os.makedirs(fake_claude_dir, exist_ok=True)
+        cl.claude_json_file = fake_claude_json
+        cl.claude_dir = fake_claude_dir
+        cl.settings_file = os.path.join(fake_claude_dir, "settings.json")
+
+        proj_path = "/home/user/my_shelve_proj"
+        proj_mcp = McpServer(
+            name="proj-heavy-mcp",
+            server_type="stdio",
+            command="uvx",
+            args=["proj-tool"],
+            enabled=True,
+            scope="project",
+            project_path=proj_path
+        )
+        cl.save_mcp(proj_mcp)
+        self.assertEqual(len(cl.list_mcps()), 1)
+
+        # Shelve project mcp
+        self.assertTrue(cl.shelve_mcp(proj_mcp))
+
+        # Verify completely removed from claude.json
+        c_data = cl.read_json_file(fake_claude_json)
+        self.assertNotIn("proj-heavy-mcp", c_data.get("projects", {}).get(proj_path, {}).get("mcpServers", {}))
+        self.assertNotIn("proj-heavy-mcp", c_data.get("mcpServers", {}))
+
+        # Verify sidecar file exists next to claude.json
+        self.assertTrue(os.path.exists(cl._get_shelved_path()))
+
+        # Verify list_mcps shows it as shelved
+        cl_mcps = cl.list_mcps()
+        self.assertEqual(len(cl_mcps), 1)
+        self.assertTrue(cl_mcps[0].shelved)
+        self.assertEqual(cl_mcps[0].scope, "project")
+        self.assertEqual(cl_mcps[0].project_path, proj_path)
+
+        # Unshelve
+        self.assertTrue(cl.unshelve_mcp(cl_mcps[0]))
+        c_data_restored = cl.read_json_file(fake_claude_json)
+        self.assertIn("proj-heavy-mcp", c_data_restored.get("projects", {}).get(proj_path, {}).get("mcpServers", {}))
+
+        # 3. Test OpenCode Shelving
+        oc = OpenCodeConfigManager()
+        fake_opencode_dir = os.path.join(self.tmp_dir, "opencode_shelve_test")
+        os.makedirs(fake_opencode_dir, exist_ok=True)
+        oc.config_dir = fake_opencode_dir
+        oc.jsonc_file = os.path.join(fake_opencode_dir, "opencode.jsonc")
+        oc.json_file = os.path.join(fake_opencode_dir, "opencode.json")
+
+        oc_mcp = McpServer(
+            name="opencode-heavy",
+            server_type="stdio",
+            command="npx",
+            args=["-y", "opencode-tool"],
+            enabled=True
+        )
+        oc.save_mcp(oc_mcp)
+        self.assertEqual(len(oc.list_mcps()), 1)
+
+        # Shelve
+        self.assertTrue(oc.shelve_mcp(oc_mcp))
+        oc_data = oc.read_json_file(oc.jsonc_file)
+        self.assertNotIn("opencode-heavy", oc_data.get("mcp", {}))
+        
+        oc_list = oc.list_mcps()
+        self.assertEqual(len(oc_list), 1)
+        self.assertTrue(oc_list[0].shelved)
+
+        # Unshelve
+        self.assertTrue(oc.unshelve_mcp(oc_list[0]))
+        oc_data_restored = oc.read_json_file(oc.jsonc_file)
+        self.assertIn("opencode-heavy", oc_data_restored.get("mcp", {}))
+
 if __name__ == '__main__':
     unittest.main()
 

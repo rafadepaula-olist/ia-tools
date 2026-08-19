@@ -153,6 +153,17 @@ QPushButton#dangerBtn:hover {
     background-color: #b91c1c;
 }
 
+/* Warning / Amber Button */
+QPushButton#warningBtn {
+    background-color: #b45309;
+    color: #ffffff;
+    border: 1px solid #f59e0b;
+    font-weight: 500;
+}
+QPushButton#warningBtn:hover {
+    background-color: #92400e;
+}
+
 /* Secondary Button */
 QPushButton#secondaryBtn {
     background-color: #1e2230;

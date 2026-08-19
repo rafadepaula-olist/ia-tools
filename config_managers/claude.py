@@ -6,6 +6,8 @@ from models.plugin import PluginSkill
 from .base import BaseConfigManager
 
 class ClaudeConfigManager(BaseConfigManager):
+    AGENT_NAME = "Claude"
+
     def __init__(self):
         home = os.path.expanduser("~")
         self.claude_json_file = os.path.join(home, ".claude.json")
@@ -14,8 +16,12 @@ class ClaudeConfigManager(BaseConfigManager):
         self.plugins_dir = os.path.join(self.claude_dir, "plugins")
         self.skills_dir = os.path.join(self.claude_dir, "skills")
 
+    def _get_shelved_path(self) -> str:
+        return self.get_shelved_filepath(self.claude_json_file)
+
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
+        seen = set()
         claude_data = self.read_json_file(self.claude_json_file)
         settings_data = self.read_json_file(self.settings_file)
 
@@ -23,6 +29,7 @@ class ClaudeConfigManager(BaseConfigManager):
         active_global = claude_data.get("mcpServers", {})
         for name, cfg in active_global.items():
             if isinstance(cfg, dict):
+                seen.add(("global", None, name))
                 servers.append(self._dict_to_mcp(name, cfg, enabled=True, scope="global", source_file=self.claude_json_file))
 
         # 2. Global Disabled MCPs in ~/.claude.json or ~/.claude/settings.json
@@ -33,7 +40,8 @@ class ClaudeConfigManager(BaseConfigManager):
             disabled_global = settings_data.get("_disabledMcpServers", {})
 
         for name, cfg in disabled_global.items():
-            if isinstance(cfg, dict):
+            if isinstance(cfg, dict) and ("global", None, name) not in seen:
+                seen.add(("global", None, name))
                 servers.append(self._dict_to_mcp(name, cfg, enabled=False, scope="global", source_file=self.claude_json_file))
 
         # 3. Project-level MCPs in ~/.claude.json (e.g. ~/, ~/tiny/tinystack/tinyerp, etc.)
@@ -45,6 +53,7 @@ class ClaudeConfigManager(BaseConfigManager):
             proj_mcps = proj_data.get("mcpServers", {})
             for name, cfg in proj_mcps.items():
                 if isinstance(cfg, dict):
+                    seen.add(("project", proj_path, name))
                     servers.append(self._dict_to_mcp(
                         name=name,
                         cfg=cfg,
@@ -56,7 +65,8 @@ class ClaudeConfigManager(BaseConfigManager):
 
             proj_disabled = proj_data.get("_disabledMcpServers", {})
             for name, cfg in proj_disabled.items():
-                if isinstance(cfg, dict):
+                if isinstance(cfg, dict) and ("project", proj_path, name) not in seen:
+                    seen.add(("project", proj_path, name))
                     servers.append(self._dict_to_mcp(
                         name=name,
                         cfg=cfg,
@@ -89,6 +99,13 @@ class ClaudeConfigManager(BaseConfigManager):
                         project_path="claude.ai",
                         source_file=cloud_cache_file
                     ))
+
+        # 5. Shelved / Temporarily Removed MCPs
+        for sm in self.read_shelved_mcps(self._get_shelved_path()):
+            key = (sm.scope, sm.project_path, sm.name)
+            if key not in seen:
+                seen.add(key)
+                servers.append(sm)
 
         return sorted(servers, key=lambda x: (x.scope, x.name.lower(), x.project_path or ""))
 
@@ -127,6 +144,17 @@ class ClaudeConfigManager(BaseConfigManager):
         )
 
     def save_mcp(self, mcp: McpServer, old_mcp: Optional[McpServer] = None) -> bool:
+        if getattr(mcp, 'shelved', False):
+            if old_mcp:
+                self.delete_mcp(old_mcp.name, project_path=old_mcp.project_path)
+            self.delete_mcp(mcp.name, project_path=mcp.project_path)
+            return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+        # Remove from shelved sidecar if previously shelved
+        self.delete_shelved_mcp(self._get_shelved_path(), mcp.name, project_path=mcp.project_path)
+        if old_mcp and (old_mcp.name != mcp.name or old_mcp.project_path != mcp.project_path):
+            self.delete_shelved_mcp(self._get_shelved_path(), old_mcp.name, project_path=old_mcp.project_path)
+
         claude_data = self.read_json_file(self.claude_json_file)
         mcp_dict = mcp.to_claude_dict()
 
@@ -181,9 +209,31 @@ class ClaudeConfigManager(BaseConfigManager):
 
         return self.write_json_file(self.claude_json_file, claude_data)
 
+    def shelve_mcp(self, mcp: McpServer) -> bool:
+        """Temporarily removes MCP from Claude config and stores in sidecar shelved file."""
+        self.delete_mcp(mcp.name, project_path=mcp.project_path)
+        return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+    def unshelve_mcp(self, mcp: McpServer) -> bool:
+        """Restores a shelved MCP back into the active Claude config."""
+        restored = self.remove_shelved_mcp(self._get_shelved_path(), mcp.name, project_path=mcp.project_path)
+        if restored:
+            restored.shelved = False
+            restored.enabled = True
+            return self.save_mcp(restored)
+        mcp.shelved = False
+        mcp.enabled = True
+        return self.save_mcp(mcp)
+
     def convert_mcp_to_global(self, mcp: McpServer) -> bool:
-        claude_data = self.read_json_file(self.claude_json_file)
         old_project_path = mcp.project_path
+        if getattr(mcp, 'shelved', False):
+            self.delete_shelved_mcp(self._get_shelved_path(), mcp.name, project_path=old_project_path)
+            mcp.scope = "global"
+            mcp.project_path = None
+            return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+        claude_data = self.read_json_file(self.claude_json_file)
 
         # 1. Remove from project-level if it was scoped to a project
         if old_project_path and "projects" in claude_data and old_project_path in claude_data["projects"]:
@@ -225,6 +275,8 @@ class ClaudeConfigManager(BaseConfigManager):
         return self.save_mcp(target)
 
     def delete_mcp(self, name: str, project_path: Optional[str] = None) -> bool:
+        self.delete_shelved_mcp(self._get_shelved_path(), name, project_path=project_path)
+
         claude_data = self.read_json_file(self.claude_json_file)
         modified = False
 

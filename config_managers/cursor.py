@@ -6,6 +6,8 @@ from models.plugin import PluginSkill
 from .base import BaseConfigManager
 
 class CursorConfigManager(BaseConfigManager):
+    AGENT_NAME = "Cursor"
+
     def __init__(self):
         home = os.path.expanduser("~")
         self.cursor_dir = os.path.join(home, ".cursor")
@@ -34,8 +36,12 @@ class CursorConfigManager(BaseConfigManager):
             return True
         return False
 
+    def _get_shelved_path(self) -> str:
+        return self.get_shelved_filepath(self._get_active_config_path())
+
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
+        seen = set()
         cfg_path = self._get_active_config_path()
         data = self.read_json_file(cfg_path)
 
@@ -43,6 +49,7 @@ class CursorConfigManager(BaseConfigManager):
         active_dict = data.get("mcpServers", {})
         for name, cfg in active_dict.items():
             if isinstance(cfg, dict):
+                seen.add(name)
                 servers.append(self._dict_to_mcp(name, cfg, enabled=True, source_file=cfg_path))
 
         # Disabled servers (stored in _disabledMcpServers or disabledMcpServers)
@@ -51,8 +58,15 @@ class CursorConfigManager(BaseConfigManager):
             disabled_dict = data.get("disabledMcpServers", {})
 
         for name, cfg in disabled_dict.items():
-            if isinstance(cfg, dict):
+            if isinstance(cfg, dict) and name not in seen:
+                seen.add(name)
                 servers.append(self._dict_to_mcp(name, cfg, enabled=False, source_file=cfg_path))
+
+        # Shelved MCPs
+        for sm in self.read_shelved_mcps(self._get_shelved_path()):
+            if sm.name not in seen:
+                seen.add(sm.name)
+                servers.append(sm)
 
         return sorted(servers, key=lambda x: x.name.lower())
 
@@ -76,6 +90,12 @@ class CursorConfigManager(BaseConfigManager):
         )
 
     def save_mcp(self, mcp: McpServer) -> bool:
+        if getattr(mcp, 'shelved', False):
+            self.delete_mcp(mcp.name)
+            return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+        self.delete_shelved_mcp(self._get_shelved_path(), mcp.name)
+
         cfg_path = self._get_active_config_path()
         data = self.read_json_file(cfg_path)
         if "mcpServers" not in data:
@@ -95,6 +115,22 @@ class CursorConfigManager(BaseConfigManager):
 
         return self.write_json_file(cfg_path, data)
 
+    def shelve_mcp(self, mcp: McpServer) -> bool:
+        """Temporarily removes MCP from Cursor config and stores in sidecar shelved file."""
+        self.delete_mcp(mcp.name)
+        return self.write_shelved_mcp(self._get_shelved_path(), mcp)
+
+    def unshelve_mcp(self, mcp: McpServer) -> bool:
+        """Restores a shelved MCP back into the active Cursor config."""
+        restored = self.remove_shelved_mcp(self._get_shelved_path(), mcp.name)
+        if restored:
+            restored.shelved = False
+            restored.enabled = True
+            return self.save_mcp(restored)
+        mcp.shelved = False
+        mcp.enabled = True
+        return self.save_mcp(mcp)
+
     def toggle_mcp(self, name: str, enable: bool) -> bool:
         mcps = self.list_mcps()
         target = next((m for m in mcps if m.name == name), None)
@@ -104,6 +140,7 @@ class CursorConfigManager(BaseConfigManager):
         return self.save_mcp(target)
 
     def delete_mcp(self, name: str) -> bool:
+        self.delete_shelved_mcp(self._get_shelved_path(), name)
         cfg_path = self._get_active_config_path()
         data = self.read_json_file(cfg_path)
         modified = False

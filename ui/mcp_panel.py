@@ -20,6 +20,8 @@ class McpCard(QFrame):
     deleted = pyqtSignal(McpServer)
     synced = pyqtSignal(McpServer)
     promoted_global = pyqtSignal(McpServer)
+    shelved = pyqtSignal(McpServer)
+    unshelved = pyqtSignal(McpServer)
 
     def __init__(self, mcp: McpServer, parent=None):
         super().__init__(parent)
@@ -53,7 +55,11 @@ class McpCard(QFrame):
         self.name_lbl.setObjectName("cardTitle")
 
         self.type_badge = Badge(self.mcp.display_type, variant=self.mcp.display_type)
-        self.status_badge = Badge("ATIVO" if self.mcp.enabled else "INATIVO", variant="active" if self.mcp.enabled else "inactive")
+        if self.mcp.shelved:
+            self.status_badge = Badge("REMOVIDO TEMP", variant="shelved")
+            self.status_badge.setToolTip("Removido do arquivo de configuração do provedor para economizar recursos")
+        else:
+            self.status_badge = Badge("ATIVO" if self.mcp.enabled else "INATIVO", variant="active" if self.mcp.enabled else "inactive")
 
         # Scope badge (Global vs Project vs Cloud)
         if self.mcp.scope == "project" and self.mcp.project_path:
@@ -75,7 +81,10 @@ class McpCard(QFrame):
         top_row.addStretch()
 
         # Toggle Switch
-        self.switch = ToggleSwitch(checked=self.mcp.enabled)
+        self.switch = ToggleSwitch(checked=self.mcp.enabled and not self.mcp.shelved)
+        self.switch.setEnabled(not self.mcp.shelved)
+        if self.mcp.shelved:
+            self.switch.setToolTip("MCP temporariamente removido. Clique em 'Restaurar' para habilitar.")
         self.switch.toggled.connect(self._on_toggled)
         top_row.addWidget(self.switch)
 
@@ -87,6 +96,21 @@ class McpCard(QFrame):
             self.promote_btn.setToolTip("Transformar este MCP de Projeto em MCP Global (disponível para todos os projetos)")
             self.promote_btn.clicked.connect(lambda: self.promoted_global.emit(self.mcp))
             top_row.addWidget(self.promote_btn)
+
+        if self.mcp.shelved:
+            self.restore_btn = QPushButton("Restaurar")
+            self.restore_btn.setObjectName("successBtn")
+            self.restore_btn.setIcon(qta.icon('fa5s.trash-restore', color='white'))
+            self.restore_btn.setToolTip("Restaurar este MCP de volta para o arquivo de configuração do provedor")
+            self.restore_btn.clicked.connect(lambda: self.unshelved.emit(self.mcp))
+            top_row.addWidget(self.restore_btn)
+        else:
+            self.shelve_btn = QPushButton("Remover Temp.")
+            self.shelve_btn.setObjectName("warningBtn")
+            self.shelve_btn.setIcon(qta.icon('fa5s.pause-circle', color='white'))
+            self.shelve_btn.setToolTip("Remover temporariamente (desvincula totalmente da config do provedor para evitar execução em background)")
+            self.shelve_btn.clicked.connect(lambda: self.shelved.emit(self.mcp))
+            top_row.addWidget(self.shelve_btn)
 
         self.edit_btn = QPushButton("Editar")
         self.edit_btn.setObjectName("secondaryBtn")
@@ -183,7 +207,7 @@ class McpPanel(QWidget):
 
         # Filter Status
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["Todos os Status", "Apenas Habilitados", "Apenas Desabilitados"])
+        self.filter_combo.addItems(["Todos os Status", "Apenas Habilitados", "Apenas Desabilitados", "Removidos Temporariamente"])
         self.filter_combo.currentTextChanged.connect(self._filter_items)
         top_bar.addWidget(self.filter_combo)
 
@@ -264,9 +288,11 @@ class McpPanel(QWidget):
             if query and query not in mcp.name.lower() and query not in mcp.command_display.lower():
                 continue
             # Check status
-            if "Habilitados" in status_filter and not mcp.enabled:
+            if "Habilitados" in status_filter and (not mcp.enabled or mcp.shelved):
                 continue
-            if "Desabilitados" in status_filter and mcp.enabled:
+            if "Desabilitados" in status_filter and (mcp.enabled or mcp.shelved):
+                continue
+            if "Removidos Temporariamente" in status_filter and not mcp.shelved:
                 continue
 
             card = McpCard(mcp)
@@ -275,6 +301,8 @@ class McpPanel(QWidget):
             card.deleted.connect(self._on_mcp_deleted)
             card.synced.connect(self._on_mcp_synced)
             card.promoted_global.connect(self._on_mcp_promoted_global)
+            card.shelved.connect(self._on_mcp_shelved)
+            card.unshelved.connect(self._on_mcp_unshelved)
             self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
             filtered_count += 1
 
@@ -375,6 +403,40 @@ class McpPanel(QWidget):
                 self.reload_data()
             else:
                 QMessageBox.critical(self, "Erro", f"Falha ao excluir MCP {mcp.name}.")
+
+    def _on_mcp_shelved(self, mcp: McpServer):
+        scope_info = f" (Projeto: {mcp.project_path})" if mcp.project_path else ""
+        reply = QMessageBox.question(
+            self,
+            "Remover Temporariamente",
+            f"Deseja remover temporariamente o MCP Server '{mcp.name}'{scope_info} de {self.agent_name}?\n\n"
+            f"O MCP será totalmente retirado do arquivo de configuração do provedor para evitar spawn de processos em background e consumo de recursos.\n\n"
+            f"Você poderá restaurá-lo a qualquer momento com um clique no botão 'Restaurar'.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            if hasattr(self.config_manager, 'shelve_mcp'):
+                success = self.config_manager.shelve_mcp(mcp)
+            else:
+                success = False
+
+            if success:
+                self.statusChanged.emit(f"MCP '{mcp.name}' removido temporariamente de {self.agent_name}.")
+                self.reload_data()
+            else:
+                QMessageBox.critical(self, "Erro", f"Falha ao remover temporariamente o MCP {mcp.name}.")
+
+    def _on_mcp_unshelved(self, mcp: McpServer):
+        if hasattr(self.config_manager, 'unshelve_mcp'):
+            success = self.config_manager.unshelve_mcp(mcp)
+        else:
+            success = False
+
+        if success:
+            self.statusChanged.emit(f"MCP '{mcp.name}' restaurado com sucesso em {self.agent_name}!")
+            self.reload_data()
+        else:
+            QMessageBox.critical(self, "Erro", f"Falha ao restaurar MCP {mcp.name}.")
 
     def _on_mcp_synced(self, mcp: McpServer):
         if self.sync_callback:
