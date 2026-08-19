@@ -10,7 +10,10 @@ class AntigravityConfigManager(BaseConfigManager):
 
     def __init__(self, base_dir: Optional[str] = None):
         home = os.path.expanduser("~")
-        self.gemini_dir = os.path.join(home, ".gemini")
+        self.gemini_dir = base_dir or os.path.join(home, ".gemini")
+        self.config_dir = os.path.join(self.gemini_dir, "config")
+        self.mcp_config_file = os.path.join(self.config_dir, "mcp_config.json")
+        self.alt_mcp_config_file = os.path.join(self.gemini_dir, "mcp_config.json")
         self.settings_file = os.path.join(self.gemini_dir, "settings.json")
         self.mcp_servers_file = os.path.join(self.gemini_dir, "mcp_servers.json")
         self.extensions_file = os.path.join(self.gemini_dir, "extensions", "extension-enablement.json")
@@ -18,63 +21,144 @@ class AntigravityConfigManager(BaseConfigManager):
         self.skills_dir = os.path.join(self.gemini_dir, "skills")
         self.config_skills_dir = os.path.join(self.gemini_dir, "config", "skills")
         self.skills_state_file = os.path.join(self.gemini_dir, "skills_state.json")
+        self.projects_file = os.path.join(self.gemini_dir, "projects.json")
+
+    def _get_active_config_path(self) -> str:
+        if os.path.exists(self.mcp_config_file):
+            return self.mcp_config_file
+        if os.path.exists(self.alt_mcp_config_file):
+            return self.alt_mcp_config_file
+        if os.path.exists(self.settings_file):
+            return self.settings_file
+        if os.path.exists(self.mcp_servers_file):
+            return self.mcp_servers_file
+        if os.path.exists(self.config_dir):
+            return self.mcp_config_file
+        return self.settings_file
 
     def _get_shelved_path(self) -> str:
-        return self.get_shelved_filepath(self.settings_file)
+        return self.get_shelved_filepath(self._get_active_config_path())
 
     def list_mcps(self) -> List[McpServer]:
         servers: List[McpServer] = []
         seen = set()
 
-        settings_data = self.read_json_file(self.settings_file)
-        mcp_servers_data = self.read_json_file(self.mcp_servers_file)
+        candidate_files = [
+            self.mcp_config_file,
+            self.alt_mcp_config_file,
+            self.settings_file,
+            self.mcp_servers_file
+        ]
 
-        # Active MCPs in settings.json
-        active_dict = settings_data.get("mcpServers", {})
-        if not active_dict and "mcpServers" in mcp_servers_data:
-            active_dict = mcp_servers_data.get("mcpServers", {})
-
-        for name, cfg in active_dict.items():
-            if not isinstance(cfg, dict):
+        for cfg_file in candidate_files:
+            if not os.path.exists(cfg_file):
                 continue
-            seen.add(name)
-            servers.append(self._dict_to_mcp(name, cfg, enabled=True, source_file=self.settings_file))
+            data = self.read_json_file(cfg_file)
 
-        # Disabled MCPs (stored in _disabledMcpServers or disabledMcpServers)
-        disabled_dict = settings_data.get("_disabledMcpServers", {})
-        if not disabled_dict:
-            disabled_dict = settings_data.get("disabledMcpServers", {})
+            # Active/configured MCPs in mcpServers
+            active_dict = data.get("mcpServers", {})
+            if not active_dict:
+                active_dict = data.get("mcp_servers", {})
 
-        for name, cfg in disabled_dict.items():
-            if name in seen or not isinstance(cfg, dict):
-                continue
-            seen.add(name)
-            servers.append(self._dict_to_mcp(name, cfg, enabled=False, source_file=self.settings_file))
+            for name, cfg in active_dict.items():
+                if not isinstance(cfg, dict):
+                    continue
+                key = ("global", None, name)
+                if key not in seen:
+                    seen.add(key)
+                    servers.append(self._dict_to_mcp(name, cfg, source_file=cfg_file))
+
+            # Disabled MCPs (in _disabledMcpServers or disabledMcpServers)
+            disabled_dict = data.get("_disabledMcpServers", {})
+            if not disabled_dict:
+                disabled_dict = data.get("disabledMcpServers", {})
+
+            for name, cfg in disabled_dict.items():
+                if not isinstance(cfg, dict):
+                    continue
+                key = ("global", None, name)
+                if key not in seen:
+                    seen.add(key)
+                    servers.append(self._dict_to_mcp(name, cfg, enabled=False, source_file=cfg_file))
+
+        # Project-scoped MCPs from projects.json if available
+        if os.path.exists(self.projects_file):
+            proj_data = self.read_json_file(self.projects_file)
+            projects_dict = proj_data.get("projects", {})
+            for proj_path in projects_dict.keys():
+                if not os.path.isdir(proj_path):
+                    continue
+                proj_cfg_candidates = [
+                    os.path.join(proj_path, ".agents", "mcp_config.json"),
+                    os.path.join(proj_path, ".gemini", "config", "mcp_config.json"),
+                    os.path.join(proj_path, ".gemini", "mcp_config.json"),
+                    os.path.join(proj_path, ".gemini", "settings.json"),
+                ]
+                for p_cfg in proj_cfg_candidates:
+                    if os.path.exists(p_cfg):
+                        p_data = self.read_json_file(p_cfg)
+                        p_mcps = p_data.get("mcpServers", {}) or p_data.get("mcp_servers", {})
+                        for name, cfg in p_mcps.items():
+                            if isinstance(cfg, dict):
+                                key = ("project", proj_path, name)
+                                if key not in seen:
+                                    seen.add(key)
+                                    servers.append(self._dict_to_mcp(
+                                        name=name,
+                                        cfg=cfg,
+                                        scope="project",
+                                        project_path=proj_path,
+                                        source_file=p_cfg
+                                    ))
 
         # Shelved / Temporarily Removed MCPs
-        for sm in self.read_shelved_mcps(self._get_shelved_path()):
-            if sm.name not in seen:
-                seen.add(sm.name)
-                servers.append(sm)
+        shelved_paths = {self._get_shelved_path(), self.get_shelved_filepath(self.settings_file)}
+        for sh_path in shelved_paths:
+            for sm in self.read_shelved_mcps(sh_path):
+                key = (sm.scope, sm.project_path, sm.name)
+                if key not in seen:
+                    seen.add(key)
+                    servers.append(sm)
 
-        return sorted(servers, key=lambda x: x.name.lower())
+        return sorted(servers, key=lambda x: (x.scope, x.name.lower(), x.project_path or ""))
 
-    def _dict_to_mcp(self, name: str, cfg: Dict[str, Any], enabled: bool, source_file: str) -> McpServer:
-        server_type = cfg.get("type", "")
-        url = cfg.get("url", "")
+    def _dict_to_mcp(
+        self,
+        name: str,
+        cfg: Dict[str, Any],
+        enabled: Optional[bool] = None,
+        scope: str = "global",
+        project_path: Optional[str] = None,
+        source_file: str = ""
+    ) -> McpServer:
+        if enabled is None:
+            if "disabled" in cfg:
+                enabled = not bool(cfg["disabled"])
+            elif "enabled" in cfg:
+                enabled = bool(cfg["enabled"])
+            else:
+                enabled = True
+        else:
+            if "disabled" in cfg:
+                enabled = not bool(cfg["disabled"])
+            elif "enabled" in cfg:
+                enabled = bool(cfg["enabled"])
+
+        url = cfg.get("url") or cfg.get("serverUrl", "")
         headers = cfg.get("headers", {})
         command = cfg.get("command", "")
         args = cfg.get("args", [])
-        env = cfg.get("env", {})
-
-        if not server_type:
-            if url:
-                server_type = "http"
-            else:
-                server_type = "stdio"
+        env = cfg.get("env") or cfg.get("environment", {})
+        server_type = cfg.get("type", "")
 
         if isinstance(args, str):
             args = [args]
+
+        if not server_type:
+            if url:
+                server_type = "http" if not url.endswith("/sse") else "sse"
+            else:
+                server_type = "stdio"
 
         return McpServer(
             name=name,
@@ -85,55 +169,81 @@ class AntigravityConfigManager(BaseConfigManager):
             url=url if url else None,
             headers=headers if isinstance(headers, dict) else {},
             enabled=enabled,
+            scope=scope,
+            project_path=project_path,
             raw_data=cfg,
             source_file=source_file
         )
 
-    def save_mcp(self, mcp: McpServer) -> bool:
+    def save_mcp(self, mcp: McpServer, old_mcp: Optional[McpServer] = None) -> bool:
         if getattr(mcp, 'shelved', False):
-            self.delete_mcp(mcp.name)
+            if old_mcp:
+                self.delete_mcp(old_mcp.name, project_path=old_mcp.project_path)
+            self.delete_mcp(mcp.name, project_path=mcp.project_path)
             return self.write_shelved_mcp(self._get_shelved_path(), mcp)
 
-        # Ensure removed from shelved sidecar when saving actively
-        self.delete_shelved_mcp(self._get_shelved_path(), mcp.name)
+        # Ensure removed from shelved sidecar
+        self.delete_shelved_mcp(self._get_shelved_path(), mcp.name, project_path=mcp.project_path)
+        if old_mcp and (old_mcp.name != mcp.name or old_mcp.project_path != mcp.project_path):
+            self.delete_shelved_mcp(self._get_shelved_path(), old_mcp.name, project_path=old_mcp.project_path)
 
-        settings_data = self.read_json_file(self.settings_file)
-        if "mcpServers" not in settings_data:
-            settings_data["mcpServers"] = {}
-        if "_disabledMcpServers" not in settings_data:
-            settings_data["_disabledMcpServers"] = {}
+        if old_mcp and old_mcp.name != mcp.name:
+            self.delete_mcp(old_mcp.name, project_path=old_mcp.project_path)
 
-        # Remove from both dictionaries first
-        settings_data["mcpServers"].pop(mcp.name, None)
-        settings_data["_disabledMcpServers"].pop(mcp.name, None)
+        active_cfg = self._get_active_config_path()
+        data = self.read_json_file(active_cfg)
+        if "mcpServers" not in data:
+            data["mcpServers"] = {}
 
         mcp_dict = mcp.to_antigravity_dict()
+        mcp_dict["disabled"] = not mcp.enabled
+        data["mcpServers"][mcp.name] = mcp_dict
+        if "_disabledMcpServers" in data:
+            data["_disabledMcpServers"].pop(mcp.name, None)
+        if "disabledMcpServers" in data:
+            data["disabledMcpServers"].pop(mcp.name, None)
 
-        if mcp.enabled:
-            settings_data["mcpServers"][mcp.name] = mcp_dict
-        else:
-            settings_data["_disabledMcpServers"][mcp.name] = mcp_dict
+        res = self.write_json_file(active_cfg, data)
 
-        # Save settings.json
-        res = self.write_json_file(self.settings_file, settings_data)
+        # Sync with settings.json and mcp_servers.json if they exist and are not the primary file
+        if active_cfg != self.settings_file and os.path.exists(self.settings_file):
+            s_data = self.read_json_file(self.settings_file)
+            if "mcpServers" not in s_data:
+                s_data["mcpServers"] = {}
+            if "_disabledMcpServers" not in s_data:
+                s_data["_disabledMcpServers"] = {}
+            s_data["mcpServers"].pop(mcp.name, None)
+            s_data["_disabledMcpServers"].pop(mcp.name, None)
+            if mcp.enabled:
+                s_data["mcpServers"][mcp.name] = mcp_dict
+            else:
+                s_data["_disabledMcpServers"][mcp.name] = mcp_dict
+            self.write_json_file(self.settings_file, s_data)
 
-        # Also sync mcp_servers.json
-        mcp_servers_data = self.read_json_file(self.mcp_servers_file)
-        mcp_servers_data["mcpServers"] = settings_data["mcpServers"]
-        if settings_data["_disabledMcpServers"]:
-            mcp_servers_data["_disabledMcpServers"] = settings_data["_disabledMcpServers"]
-        self.write_json_file(self.mcp_servers_file, mcp_servers_data)
+        if active_cfg != self.mcp_servers_file and os.path.exists(self.mcp_servers_file):
+            ms_data = self.read_json_file(self.mcp_servers_file)
+            if "mcpServers" not in ms_data:
+                ms_data["mcpServers"] = {}
+            if "_disabledMcpServers" not in ms_data:
+                ms_data["_disabledMcpServers"] = {}
+            ms_data["mcpServers"].pop(mcp.name, None)
+            ms_data["_disabledMcpServers"].pop(mcp.name, None)
+            if mcp.enabled:
+                ms_data["mcpServers"][mcp.name] = mcp_dict
+            else:
+                ms_data["_disabledMcpServers"][mcp.name] = mcp_dict
+            self.write_json_file(self.mcp_servers_file, ms_data)
 
         return res
 
     def shelve_mcp(self, mcp: McpServer) -> bool:
         """Temporarily removes MCP from provider config and stores in sidecar shelved file."""
-        self.delete_mcp(mcp.name)
+        self.delete_mcp(mcp.name, project_path=mcp.project_path)
         return self.write_shelved_mcp(self._get_shelved_path(), mcp)
 
     def unshelve_mcp(self, mcp: McpServer) -> bool:
         """Restores a shelved MCP back into the active provider config."""
-        restored = self.remove_shelved_mcp(self._get_shelved_path(), mcp.name)
+        restored = self.remove_shelved_mcp(self._get_shelved_path(), mcp.name, project_path=mcp.project_path)
         if restored:
             restored.shelved = False
             restored.enabled = True
@@ -150,27 +260,29 @@ class AntigravityConfigManager(BaseConfigManager):
         target.enabled = enable
         return self.save_mcp(target)
 
-    def delete_mcp(self, name: str) -> bool:
-        self.delete_shelved_mcp(self._get_shelved_path(), name)
+    def delete_mcp(self, name: str, project_path: Optional[str] = None) -> bool:
+        self.delete_shelved_mcp(self._get_shelved_path(), name, project_path=project_path)
+        self.delete_shelved_mcp(self.get_shelved_filepath(self.settings_file), name, project_path=project_path)
 
-        settings_data = self.read_json_file(self.settings_file)
         modified = False
-        if "mcpServers" in settings_data and name in settings_data["mcpServers"]:
-            del settings_data["mcpServers"][name]
-            modified = True
-        if "_disabledMcpServers" in settings_data and name in settings_data["_disabledMcpServers"]:
-            del settings_data["_disabledMcpServers"][name]
-            modified = True
-
-        if modified:
-            self.write_json_file(self.settings_file, settings_data)
-            # Sync mcp_servers.json
-            mcp_servers_data = self.read_json_file(self.mcp_servers_file)
-            if "mcpServers" in mcp_servers_data and name in mcp_servers_data["mcpServers"]:
-                del mcp_servers_data["mcpServers"][name]
-                self.write_json_file(self.mcp_servers_file, mcp_servers_data)
-            return True
-        return False
+        candidates = [
+            self.mcp_config_file,
+            self.alt_mcp_config_file,
+            self.settings_file,
+            self.mcp_servers_file
+        ]
+        for cfg_file in candidates:
+            if os.path.exists(cfg_file):
+                data = self.read_json_file(cfg_file)
+                file_mod = False
+                for key in ["mcpServers", "mcp_servers", "_disabledMcpServers", "disabledMcpServers"]:
+                    if key in data and name in data[key]:
+                        del data[key][name]
+                        file_mod = True
+                if file_mod:
+                    self.write_json_file(cfg_file, data)
+                    modified = True
+        return modified
 
 
     def list_plugins_and_skills(self, project_path: Optional[str] = None) -> List[PluginSkill]:
@@ -291,13 +403,13 @@ class AntigravityConfigManager(BaseConfigManager):
         return True
 
     def get_raw_config_path(self) -> str:
-        return self.settings_file
+        return self._get_active_config_path()
 
     def get_raw_config(self) -> Dict[str, Any]:
-        return self.read_json_file(self.settings_file)
+        return self.read_json_file(self._get_active_config_path())
 
     def save_raw_config(self, data: Dict[str, Any]) -> bool:
-        return self.write_json_file(self.settings_file, data)
+        return self.write_json_file(self._get_active_config_path(), data)
 
     def is_installed(self) -> bool:
         """Detects if Antigravity / Gemini CLI is installed or present on the system."""

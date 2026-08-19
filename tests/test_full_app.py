@@ -340,11 +340,9 @@ Do not optimize without explain plan.
         self.assertNotIn("transition-mcp", data.get("projects", {}).get(proj_path, {}).get("mcpServers", {}))
 
     def test_cross_provider_mcp_copying(self):
-        ag = AntigravityConfigManager()
         fake_gemini_dir = os.path.join(self.tmp_dir, "gemini_copy_test")
         os.makedirs(fake_gemini_dir, exist_ok=True)
-        ag.settings_file = os.path.join(fake_gemini_dir, "settings.json")
-        ag.mcp_servers_file = os.path.join(fake_gemini_dir, "mcp_servers.json")
+        ag = AntigravityConfigManager(base_dir=fake_gemini_dir)
 
         source_mcp = McpServer(
             name="shared-service",
@@ -365,11 +363,9 @@ Do not optimize without explain plan.
 
     def test_shelved_mcp_lifecycle(self):
         # 1. Test Antigravity Shelving with sidecar file
-        ag = AntigravityConfigManager()
         fake_gemini_dir = os.path.join(self.tmp_dir, "gemini_shelve_test")
         os.makedirs(fake_gemini_dir, exist_ok=True)
-        ag.settings_file = os.path.join(fake_gemini_dir, "settings.json")
-        ag.mcp_servers_file = os.path.join(fake_gemini_dir, "mcp_servers.json")
+        ag = AntigravityConfigManager(base_dir=fake_gemini_dir)
 
         mcp1 = McpServer(
             name="heavy-mcp",
