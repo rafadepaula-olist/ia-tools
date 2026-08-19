@@ -44,7 +44,6 @@ This skill teaches the complete build, packaging, local desktop installation, an
 Running `./build.sh` performs end-to-end environment preparation, compilation, binary output, and system launcher registration:
 
 ```bash
-cd /home/rafael.paula/ia-tools
 ./build.sh
 ```
 
