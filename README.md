@@ -76,6 +76,7 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 ### 1. 🔌 Gestão Completa de MCPs (Model Context Protocol)
 * **Descoberta Dinâmica de Agentes**: O aplicativo detecta automaticamente quais ferramentas e CLIs estão instalados no seu computador (Antigravity/Gemini, Claude Code, OpenCode, Codex, Windsurf, Cursor) e renderiza as abas correspondentes sob demanda.
 * **Toggle Switch Visual Instantâneo**: Ative ou desative qualquer servidor MCP com 1 clique (sem perder credenciais, argumentos ou tokens).
+* **⏸️ Remover Temporariamente (Shelve / Estacionar)**: Remove completamente o MCP do arquivo de configuração ativo do provedor (armazenando-o em um sidecar `<config>.shelved`) para garantir que o agente não spawne processos ocultos em background consumindo memória e processamento. Restaure a qualquer momento com um único clique no botão **Restaurar**.
 * **Seletor de Workspace / Projeto**: Alterne rapidamente entre a visão Global e os projetos locais (`[PROJ: ~]`, `[PROJ: tinyerp]`, etc.) ou integrações da nuvem (`[CLAUDE.AI]`).
 * **🌐 Promover MCP de Projeto para Global**: Transforme um MCP configurado especificamente para uma pasta/projeto em um servidor Global (disponível para todos os projetos do agente) em 1 clique ou via modal de edição.
 * **📋 Copiar / Clonar MCP entre Provedores**: Modal dedicado para duplicar configurações de um servidor MCP entre qualquer agente (ex: Claude ➔ Antigravity ➔ OpenCode ➔ Windsurf ➔ Cursor ➔ Codex) escolhendo nome e escopo de destino.
@@ -99,6 +100,7 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 
 ### 3. 🛡️ Segurança e Backups Automáticos
 * Toda alteração salva gera automaticamente um snapshot com data/hora em `~/.ia-tools-backups/` e uma cópia `.bak`.
+* Armazenamento seguro de MCPs temporariamente removidos via arquivos sidecar `<config>.shelved` ao lado da respectiva configuração.
 * Botões no cabeçalho para gerar **Backup Geral** e **Abrir Pasta de Backups**.
 
 ---
@@ -107,13 +109,13 @@ Binários pré-compilados para **Linux (x86_64)**, **macOS** e **Windows (.exe)*
 
 | Agente / Provedor | Arquivos de Configuração | Diretórios de Skills / Plugins | Critérios de Detecção Automática |
 |---|---|---|---|
-| 🚀 **Antigravity CLI** | • `~/.gemini/settings.json`<br>• `~/.gemini/mcp_servers.json`<br>• `~/.gemini/skills_state.json`<br>• `~/.gemini/extensions/extension-enablement.json` | • `~/.gemini/skills/`<br>• `~/.gemini/config/skills/`<br>• `~/.gemini/extensions/` | Diretórios `~/.gemini`, `~/.antigravity`, `~/.antigravity-ide` ou comandos `antigravity`, `gemini`, `agy` |
+| 🚀 **Antigravity CLI** | • `~/.gemini/config/mcp_config.json`<br>• `~/.gemini/mcp_config.json`<br>• `~/.gemini/settings.json`<br>• `~/.gemini/mcp_servers.json`<br>• `~/.gemini/skills_state.json`<br>• `~/.gemini/extensions/extension-enablement.json` | • `~/.gemini/skills/`<br>• `~/.gemini/config/skills/`<br>• `~/.gemini/extensions/` | Diretórios `~/.gemini`, `~/.antigravity`, `~/.antigravity-ide` ou comandos `antigravity`, `gemini`, `agy` |
 | 🟣 **Claude Code** | • `~/.claude.json` *(global, projetos e cloud)*<br>• `~/.claude/settings.json`<br>• `~/.claude/mcp-needs-auth-cache.json` | • `~/.claude/plugins/`<br>• `~/.claude/skills/`<br>• Skills das pastas de projetos | Arquivo `~/.claude.json`, pasta `~/.claude/` ou comando `claude` |
 | ⚡ **OpenCode** | • `~/.config/opencode/opencode.jsonc`<br>• `~/.config/opencode/opencode.json` | • `~/.config/opencode/plugins/`<br>• `~/.config/opencode/skills/` | Diretórios `~/.config/opencode`, `~/.opencode` ou comando `opencode` |
 | 🟧 **Codex** | • `~/.codex/config.json`<br>• `~/.agents/config.json` | • `~/.codex/skills/`<br>• `~/.agents/skills/` | Diretórios `~/.codex`, `~/.agents` ou comando `codex` |
 | 🌊 **Windsurf** | • `~/.codeium/windsurf/mcp_config.json`<br>• `~/.windsurf/mcp_config.json` | • `~/.codeium/windsurf/skills/`<br>• `~/.windsurf/skills/` | Diretórios `~/.codeium/windsurf`, `~/.windsurf` ou comando `windsurf` |
 | 🖱️ **Cursor** | • `~/.cursor/mcp.json`<br>• `~/.config/Cursor/mcp.json` | • `~/.cursor/skills/`<br>• `~/.cursor/extensions/` | Diretórios `~/.cursor`, `~/.config/Cursor` ou comando `cursor` |
-| 📁 **Projetos Locais** | • `~/.claude.json` *(projects)*<br>• `~/.gemini/projects.json` | • `<projeto>/.agents/skills/`<br>• `<projeto>/.gemini/skills/`<br>• `<projeto>/.claude/skills/`<br>• `<projeto>/.opencode/skills/`<br>• `<projeto>/skills/` | Descoberta automática de repositórios conhecidos ou seleção manual de pastas |
+| 📁 **Projetos Locais** | • `~/.claude.json` *(projects)*<br>• `~/.gemini/projects.json`<br>• `<projeto>/.agents/mcp_config.json`<br>• `<projeto>/.gemini/config/mcp_config.json` | • `<projeto>/.agents/skills/`<br>• `<projeto>/.gemini/skills/`<br>• `<projeto>/.claude/skills/`<br>• `<projeto>/.opencode/skills/`<br>• `<projeto>/skills/` | Descoberta automática de repositórios conhecidos ou seleção manual de pastas |
 
 ---
 
