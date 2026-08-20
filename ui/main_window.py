@@ -2,11 +2,10 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTabWidget, QPushButton, QStatusBar, QMessageBox, QFrame
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QIcon, QDesktopServices
 import qtawesome as qta
 import os
-import subprocess
 import datetime
 from typing import Dict, List, Any
 
@@ -25,7 +24,7 @@ PROVIDER_REGISTRY = [
         "manager_cls": AntigravityConfigManager,
         "icon": "fa5s.rocket",
         "color": "#818cf8",
-        "label": "🚀 Antigravity CLI (Gemini)",
+        "label": "Antigravity",
         "desc": "Google Antigravity / Gemini CLI (~/.gemini)"
     },
     {
@@ -33,7 +32,7 @@ PROVIDER_REGISTRY = [
         "manager_cls": ClaudeConfigManager,
         "icon": "fa5s.brain",
         "color": "#c084fc",
-        "label": "🟣 Claude Code (Claude)",
+        "label": "Claude",
         "desc": "Anthropic Claude Code (~/.claude, ~/.claude.json)"
     },
     {
@@ -41,7 +40,7 @@ PROVIDER_REGISTRY = [
         "manager_cls": OpenCodeConfigManager,
         "icon": "fa5s.bolt",
         "color": "#38bdf8",
-        "label": "⚡ OpenCode (Opencode)",
+        "label": "OpenCode",
         "desc": "OpenCode Interpreter (~/.config/opencode)"
     },
     {
@@ -49,7 +48,7 @@ PROVIDER_REGISTRY = [
         "manager_cls": CodexConfigManager,
         "icon": "fa5s.code",
         "color": "#f59e0b",
-        "label": "🟧 Codex (.agents)",
+        "label": "Codex",
         "desc": "OpenAI Codex / Agents (~/.codex, ~/.agents)"
     },
     {
@@ -57,7 +56,7 @@ PROVIDER_REGISTRY = [
         "manager_cls": WindsurfConfigManager,
         "icon": "fa5s.wind",
         "color": "#10b981",
-        "label": "🌊 Windsurf (Codeium)",
+        "label": "Windsurf",
         "desc": "Codeium Windsurf IDE (~/.codeium/windsurf)"
     },
     {
@@ -65,7 +64,7 @@ PROVIDER_REGISTRY = [
         "manager_cls": CursorConfigManager,
         "icon": "fa5s.mouse-pointer",
         "color": "#06b6d4",
-        "label": "🖱️ Cursor",
+        "label": "Cursor",
         "desc": "Cursor AI Editor (~/.cursor, ~/.config/Cursor)"
     }
 ]
@@ -96,34 +95,28 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(16, 14, 16, 12)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(14, 10, 14, 10)
+        main_layout.setSpacing(10)
 
-        # Top Header Bar
-        header = QFrame()
-        header.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #161a29, stop:1 #1e1b38);
-                border: 1px solid #282e44;
-                border-radius: 10px;
-                padding: 10px 16px;
-            }
-        """)
+        # Top Header Bar (Borderless)
+        header = QWidget()
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(10, 6, 10, 6)
-        h_layout.setSpacing(16)
+        h_layout.setContentsMargins(2, 2, 2, 6)
+        h_layout.setSpacing(12)
 
         # App Icon & Title
         logo_lbl = QLabel()
-        logo_lbl.setPixmap(qta.icon('fa5s.robot', color='#818cf8').pixmap(32, 32))
+        logo_lbl.setStyleSheet("background: transparent; border: none;")
+        logo_lbl.setPixmap(qta.icon('fa5s.robot', color='#818cf8').pixmap(28, 28))
         h_layout.addWidget(logo_lbl)
 
         title_box = QVBoxLayout()
-        title_box.setSpacing(2)
+        title_box.setSpacing(1)
         title_lbl = QLabel("⚡ IA Tools Manager")
         title_lbl.setObjectName("headerTitle")
+        title_lbl.setStyleSheet("background: transparent; border: none; font-size: 17px; font-weight: 700; color: #f8fafc;")
         self.subtitle_lbl = QLabel("Gestão centralizada de MCPs, Plugins & Skills para agentes de IA locais")
-        self.subtitle_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.subtitle_lbl.setStyleSheet("background: transparent; border: none; color: #94a3b8; font-size: 11px;")
         title_box.addWidget(title_lbl)
         title_box.addWidget(self.subtitle_lbl)
         h_layout.addLayout(title_box)
@@ -131,33 +124,26 @@ class MainWindow(QMainWindow):
         h_layout.addStretch()
 
         # Global Action Buttons
+        self.refresh_all_btn = QPushButton("Refresh")
+        self.refresh_all_btn.setObjectName("secondaryBtn")
+        self.refresh_all_btn.setIcon(qta.icon('fa5s.redo', color='#94a3b8'))
+        self.refresh_all_btn.setToolTip("Redescobrir e recarregar agentes do sistema")
+        self.refresh_all_btn.clicked.connect(self.reload_all_agents)
+        h_layout.addWidget(self.refresh_all_btn)
+
         self.sync_btn = QPushButton("Sincronizar Agentes")
         self.sync_btn.setObjectName("primaryBtn")
-        self.sync_btn.setIcon(qta.icon('fa5s.exchange-alt', color='white'))
+        self.sync_btn.setIcon(qta.icon('fa5s.sync-alt', color='white'))
         self.sync_btn.setToolTip("Copiar / Sincronizar MCP Servers entre os agentes detectados")
         self.sync_btn.clicked.connect(self._open_sync_dialog)
         h_layout.addWidget(self.sync_btn)
 
         self.backup_btn = QPushButton("Backup Geral")
-        self.backup_btn.setObjectName("secondaryBtn")
-        self.backup_btn.setIcon(qta.icon('fa5s.shield-alt', color='#10b981'))
+        self.backup_btn.setObjectName("successBtn")
+        self.backup_btn.setIcon(qta.icon('fa5s.shield-alt', color='#34d399'))
         self.backup_btn.setToolTip("Gerar backup de todos os arquivos de configuração agora")
         self.backup_btn.clicked.connect(self._backup_all)
         h_layout.addWidget(self.backup_btn)
-
-        self.open_bkp_btn = QPushButton("Pasta Backups")
-        self.open_bkp_btn.setObjectName("secondaryBtn")
-        self.open_bkp_btn.setIcon(qta.icon('fa5s.folder', color='#fbbf24'))
-        self.open_bkp_btn.setToolTip("Abrir pasta de backups no gerenciador de arquivos")
-        self.open_bkp_btn.clicked.connect(self._open_backup_folder)
-        h_layout.addWidget(self.open_bkp_btn)
-
-        self.refresh_all_btn = QPushButton()
-        self.refresh_all_btn.setObjectName("secondaryBtn")
-        self.refresh_all_btn.setIcon(qta.icon('fa5s.redo', color='#cbd5e1'))
-        self.refresh_all_btn.setToolTip("Redescobrir e recarregar agentes do sistema")
-        self.refresh_all_btn.clicked.connect(self.reload_all_agents)
-        h_layout.addWidget(self.refresh_all_btn)
 
         main_layout.addWidget(header)
 
@@ -203,7 +189,7 @@ class MainWindow(QMainWindow):
                 )
                 tab.statusChanged.connect(self._set_status)
                 self.agent_tabs[name] = tab
-                self.main_tabs.addTab(tab, qta.icon(prov["icon"], color=prov["color"]), prov["label"])
+                self.main_tabs.addTab(tab, prov["label"])
                 discovered.append(name)
 
         if not self.agent_tabs:
@@ -344,10 +330,11 @@ class MainWindow(QMainWindow):
             )
 
     def _open_backup_folder(self):
-        bkp_dir = os.path.expanduser("~/.ia-tools-backups")
+        home = os.path.expanduser("~")
+        bkp_dir = os.path.join(home, ".config", "ia-tools", "backups")
         os.makedirs(bkp_dir, exist_ok=True)
         try:
-            subprocess.Popen(["xdg-open", bkp_dir])
+            QDesktopServices.openUrl(QUrl.fromLocalFile(bkp_dir))
         except Exception as e:
             QMessageBox.warning(self, "Aviso", f"Não foi possível abrir o gerenciador de arquivos: {e}")
 

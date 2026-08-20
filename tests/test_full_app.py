@@ -574,6 +574,66 @@ Do not optimize without explain plan.
         self.assertEqual(mcps[0].name, "global-tool")
         self.assertEqual(mcps[0].scope, "global")
 
+    def test_project_registration(self):
+        target_proj = os.path.join(self.tmp_dir, "custom_registered_proj")
+        os.makedirs(target_proj, exist_ok=True)
+        
+        self.assertTrue(BaseConfigManager.is_valid_project_path(target_proj))
+        BaseConfigManager.register_known_project(target_proj)
+        
+        projects = BaseConfigManager.get_known_projects()
+        self.assertIn(target_proj, projects)
+
+    def test_windows_and_root_path_validation(self):
+        # Reject root paths
+        self.assertFalse(BaseConfigManager.is_valid_project_path("/"))
+        self.assertFalse(BaseConfigManager.is_valid_project_path("~"))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(""))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(None))
+
+        # Check drive root rejection
+        drive, tail = os.path.splitdrive("C:\\")
+        if drive:
+            self.assertFalse(BaseConfigManager.is_valid_project_path("C:\\"))
+            self.assertFalse(BaseConfigManager.is_valid_project_path("C:/"))
+
+    def test_secure_file_permissions(self):
+        target_file = os.path.join(self.tmp_dir, "secure_config.json")
+        BaseConfigManager.write_json_file(target_file, {"token": "secret_123"})
+        self.assertTrue(os.path.exists(target_file))
+        if hasattr(os, 'stat') and os.name == 'posix':
+            mode = oct(os.stat(target_file).st_mode & 0o777)
+            self.assertEqual(mode, '0o600')
+
+    def test_secret_masking(self):
+        url = "postgresql://myuser:supersecretpass@localhost:5432/mydb"
+        masked = McpServer.mask_secrets(url)
+        self.assertNotIn("supersecretpass", masked)
+        self.assertIn("••••••••", masked)
+
+        url_with_token = "https://mcp.company.com/mcp?token=xyz123abc456"
+        masked_token = McpServer.mask_secrets(url_with_token)
+        self.assertNotIn("xyz123abc456", masked_token)
+        self.assertIn("••••••••", masked_token)
+
+    def test_backup_pruning(self):
+        orig_backup_dir = BaseConfigManager.BACKUP_DIR
+        test_bkp_dir = os.path.join(self.tmp_dir, "test_backups")
+        BaseConfigManager.BACKUP_DIR = test_bkp_dir
+        try:
+            target_file = os.path.join(self.tmp_dir, "config_to_backup.json")
+            BaseConfigManager.write_json_file(target_file, {"version": 1}, backup=False)
+
+            # Create 15 backups
+            for i in range(15):
+                BaseConfigManager.write_json_file(target_file, {"version": i}, backup=True)
+
+            # Check that count does not exceed MAX_BACKUPS_PER_FILE (10)
+            backups = [f for f in os.listdir(test_bkp_dir) if f.endswith(".bak")]
+            self.assertLessEqual(len(backups), BaseConfigManager.MAX_BACKUPS_PER_FILE)
+        finally:
+            BaseConfigManager.BACKUP_DIR = orig_backup_dir
+
 if __name__ == '__main__':
     unittest.main()
 

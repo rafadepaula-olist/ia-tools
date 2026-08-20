@@ -40,6 +40,7 @@ env/
 *.log
 .DS_Store
 .ia-tools-backups/
+.gemini_security/
 
 # Binaries
 /ia-tools

@@ -137,11 +137,16 @@ class PluginEditorDialog(QDialog):
         self.src_input.setText(p.get("source", ""))
 
     def _on_save(self):
+        import re
         name = self.name_input.text().strip()
         if not name:
             QMessageBox.warning(self, "Aviso", "O nome/identificador do plugin é obrigatório.")
             return
-        
+
+        if not re.match(r'^[a-zA-Z0-9_\-\.@\/:]+$', name):
+            QMessageBox.warning(self, "Aviso", "O nome do plugin contém caracteres inválidos. Utilize apenas letras, números, hífen, underline, ponto ou arroba.")
+            return
+
         stype_text = self.src_type_combo.currentText().split()[0]
         self.plugin_data = {
             "name": name,

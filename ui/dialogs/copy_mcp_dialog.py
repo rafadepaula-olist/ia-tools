@@ -41,20 +41,26 @@ class CopyMcpDialog(QDialog):
         i_layout = QVBoxLayout(info_card)
         i_layout.setSpacing(6)
 
+        import html
+        safe_name = html.escape(self.mcp.name)
+        safe_type = html.escape(self.mcp.display_type)
+        safe_src = html.escape(self.source_agent)
+
         header_row = QHBoxLayout()
-        header_lbl = QLabel(f"<b>MCP:</b> <span style='color:#38bdf8; font-size:13px;'>{self.mcp.name}</span>")
-        type_lbl = QLabel(f"Tipo: <span style='color:#a78bfa;'>{self.mcp.display_type}</span>")
+        header_lbl = QLabel(f"<b>MCP:</b> <span style='color:#38bdf8; font-size:13px;'>{safe_name}</span>")
+        type_lbl = QLabel(f"Tipo: <span style='color:#a78bfa;'>{safe_type}</span>")
         header_row.addWidget(header_lbl)
         header_row.addStretch()
         header_row.addWidget(type_lbl)
         i_layout.addLayout(header_row)
 
-        src_lbl = QLabel(f"<b>Origem:</b> {self.source_agent} (Escopo: {self.mcp.scope.upper()})")
+        src_lbl = QLabel(f"<b>Origem:</b> {safe_src} (Escopo: {self.mcp.scope.upper()})")
         src_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
         i_layout.addWidget(src_lbl)
 
         cmd_preview = self.mcp.command_display or "(Sem comando)"
-        cmd_lbl = QLabel(f"<code>{cmd_preview[:70]}{'...' if len(cmd_preview) > 70 else ''}</code>")
+        safe_cmd = html.escape(cmd_preview[:70])
+        cmd_lbl = QLabel(f"<code>{safe_cmd}{'...' if len(cmd_preview) > 70 else ''}</code>")
         cmd_lbl.setStyleSheet("color: #64748b; font-size: 10px; font-family: monospace;")
         i_layout.addWidget(cmd_lbl)
 

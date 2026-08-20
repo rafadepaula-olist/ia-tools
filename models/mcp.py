@@ -29,6 +29,23 @@ class McpServer:
             return self.server_type.upper() if self.server_type else "REMOTE"
         return "STDIO"
 
+    @classmethod
+    def mask_secrets(cls, text: str) -> str:
+        if not text:
+            return ""
+        import re
+        # Mask database URI passwords (e.g. postgresql://user:password@host)
+        masked = re.sub(r'(://[^:]+:)([^@]+)(@)', r'\1••••••••\3', text)
+        # Mask query parameters with tokens/keys/passwords
+        masked = re.sub(r'([?&](?:api_key|token|access_token|password|secret|key|auth)=)([^&]+)', r'\1••••••••', masked, flags=re.IGNORECASE)
+        # Mask Bearer tokens
+        masked = re.sub(r'(Bearer\s+)[a-zA-Z0-9_\-\.]+', r'\1••••••••', masked)
+        return masked
+
+    @property
+    def command_display_masked(self) -> str:
+        return self.mask_secrets(self.command_display)
+
     @property
     def command_display(self) -> str:
         if self.is_remote:

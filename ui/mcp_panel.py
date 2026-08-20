@@ -29,39 +29,33 @@ class McpCard(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet("""
             McpCard {
-                background-color: #161924;
-                border: 1px solid #232736;
+                background-color: #12151f;
+                border: 1px solid #1e2230;
                 border-radius: 8px;
-                padding: 12px;
+                padding: 10px 12px;
             }
             McpCard:hover {
-                border: 1px solid #38bdf8;
-                background-color: #191d2a;
+                border: 1px solid #283044;
+                background-color: #151824;
             }
         """)
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         # Header Row
         top_row = QHBoxLayout()
-        top_row.setSpacing(10)
+        top_row.setSpacing(8)
 
-        # Left Info
+        # Left: Name and Badges
         self.name_lbl = QLabel(self.mcp.name)
         self.name_lbl.setObjectName("cardTitle")
+        self.name_lbl.setStyleSheet("background: transparent; border: none; font-size: 14px; font-weight: 700; color: #f8fafc;")
 
-        self.type_badge = Badge(self.mcp.display_type, variant=self.mcp.display_type)
-        if self.mcp.shelved:
-            self.status_badge = Badge("REMOVIDO TEMP", variant="shelved")
-            self.status_badge.setToolTip("Removido do arquivo de configuração do provedor para economizar recursos")
-        else:
-            self.status_badge = Badge("ATIVO" if self.mcp.enabled else "INATIVO", variant="active" if self.mcp.enabled else "inactive")
-
-        # Scope badge (Global vs Project vs Cloud)
+        # Scope badge
         if self.mcp.scope == "project" and self.mcp.project_path:
             home = os.path.expanduser("~")
             short_p = "~" if self.mcp.project_path == home else os.path.basename(self.mcp.project_path)
@@ -74,13 +68,21 @@ class McpCard(QFrame):
             self.scope_badge = Badge("GLOBAL", variant="global")
             self.scope_badge.setToolTip("Escopo Global (Todos os Projetos)")
 
+        self.type_badge = Badge(self.mcp.display_type, variant=self.mcp.display_type)
+        
+        if self.mcp.shelved:
+            self.status_badge = Badge("TEMPORÁRIO", variant="shelved")
+            self.status_badge.setToolTip("Removido da config ativa para economizar recursos")
+        else:
+            self.status_badge = Badge("ATIVO" if self.mcp.enabled else "INATIVO", variant="active" if self.mcp.enabled else "inactive")
+
         top_row.addWidget(self.name_lbl)
         top_row.addWidget(self.scope_badge)
         top_row.addWidget(self.type_badge)
         top_row.addWidget(self.status_badge)
         top_row.addStretch()
 
-        # Toggle Switch
+        # Right Controls: ToggleSwitch + Action Icon Buttons
         self.switch = ToggleSwitch(checked=self.mcp.enabled and not self.mcp.shelved)
         self.switch.setEnabled(not self.mcp.shelved)
         if self.mcp.shelved:
@@ -88,95 +90,110 @@ class McpCard(QFrame):
         self.switch.toggled.connect(self._on_toggled)
         top_row.addWidget(self.switch)
 
-        # Action Buttons
+        # Minimal icon buttons
         if self.mcp.scope == "project":
-            self.promote_btn = QPushButton("Tornar Global")
-            self.promote_btn.setObjectName("secondaryBtn")
+            self.promote_btn = QPushButton()
+            self.promote_btn.setObjectName("iconBtn")
             self.promote_btn.setIcon(qta.icon('fa5s.globe', color='#38bdf8'))
-            self.promote_btn.setToolTip("Transformar este MCP de Projeto em MCP Global (disponível para todos os projetos)")
+            self.promote_btn.setFixedSize(28, 28)
+            self.promote_btn.setToolTip("Transformar este MCP de Projeto em MCP Global")
             self.promote_btn.clicked.connect(lambda: self.promoted_global.emit(self.mcp))
             top_row.addWidget(self.promote_btn)
 
         if self.mcp.shelved:
-            self.restore_btn = QPushButton("Restaurar")
-            self.restore_btn.setObjectName("successBtn")
-            self.restore_btn.setIcon(qta.icon('fa5s.trash-restore', color='white'))
-            self.restore_btn.setToolTip("Restaurar este MCP de volta para o arquivo de configuração do provedor")
+            self.restore_btn = QPushButton()
+            self.restore_btn.setObjectName("iconBtn")
+            self.restore_btn.setIcon(qta.icon('fa5s.trash-restore', color='#34d399'))
+            self.restore_btn.setFixedSize(28, 28)
+            self.restore_btn.setToolTip("Restaurar este MCP de volta para a configuração ativa")
             self.restore_btn.clicked.connect(lambda: self.unshelved.emit(self.mcp))
             top_row.addWidget(self.restore_btn)
         else:
-            self.shelve_btn = QPushButton("Remover Temp.")
-            self.shelve_btn.setObjectName("warningBtn")
-            self.shelve_btn.setIcon(qta.icon('fa5s.pause-circle', color='white'))
-            self.shelve_btn.setToolTip("Remover temporariamente (desvincula totalmente da config do provedor para evitar execução em background)")
+            self.shelve_btn = QPushButton()
+            self.shelve_btn.setObjectName("iconBtn")
+            self.shelve_btn.setIcon(qta.icon('fa5s.pause-circle', color='#94a3b8'))
+            self.shelve_btn.setFixedSize(28, 28)
+            self.shelve_btn.setToolTip("Remover temporariamente (desvincula da config sem perder dados)")
             self.shelve_btn.clicked.connect(lambda: self.shelved.emit(self.mcp))
             top_row.addWidget(self.shelve_btn)
 
-        self.edit_btn = QPushButton("Editar")
-        self.edit_btn.setObjectName("secondaryBtn")
-        self.edit_btn.setIcon(qta.icon('fa5s.edit', color='#cbd5e1'))
-        self.edit_btn.clicked.connect(lambda: self.edited.emit(self.mcp))
-        top_row.addWidget(self.edit_btn)
-
         self.sync_btn = QPushButton()
-        self.sync_btn.setObjectName("secondaryBtn")
-        self.sync_btn.setIcon(qta.icon('fa5s.clone', color='#818cf8'))
+        self.sync_btn.setObjectName("iconBtn")
+        self.sync_btn.setIcon(qta.icon('fa5s.clone', color='#94a3b8'))
+        self.sync_btn.setFixedSize(28, 28)
         self.sync_btn.setToolTip("Copiar este MCP para outro agente / provedor")
         self.sync_btn.clicked.connect(lambda: self.synced.emit(self.mcp))
         top_row.addWidget(self.sync_btn)
 
+        self.edit_btn = QPushButton()
+        self.edit_btn.setObjectName("editIconBtn")
+        self.edit_btn.setIcon(qta.icon('fa5s.pen', color='#94a3b8'))
+        self.edit_btn.setFixedSize(28, 28)
+        self.edit_btn.setToolTip("Editar MCP Server")
+        self.edit_btn.clicked.connect(lambda: self.edited.emit(self.mcp))
+        top_row.addWidget(self.edit_btn)
+
         self.del_btn = QPushButton()
-        self.del_btn.setObjectName("dangerBtn")
-        self.del_btn.setIcon(qta.icon('fa5s.trash', color='white'))
+        self.del_btn.setObjectName("dangerIconBtn")
+        self.del_btn.setIcon(qta.icon('fa5s.trash-alt', color='#94a3b8'))
+        self.del_btn.setFixedSize(28, 28)
         self.del_btn.setToolTip("Excluir MCP Server")
         self.del_btn.clicked.connect(lambda: self.deleted.emit(self.mcp))
         top_row.addWidget(self.del_btn)
 
         layout.addLayout(top_row)
 
-        # Details Snippet
-        snippet_row = QHBoxLayout()
+        # Details / Command Box
         snippet_box = QFrame()
-        snippet_box.setStyleSheet("background-color: #0f1118; border: 1px solid #1e2230; border-radius: 6px; padding: 6px 10px;")
+        snippet_box.setStyleSheet("""
+            QFrame {
+                background-color: #090b10;
+                border: 1px solid #181b26;
+                border-radius: 6px;
+                padding: 4px 8px;
+            }
+        """)
         s_layout = QHBoxLayout(snippet_box)
-        s_layout.setContentsMargins(6, 4, 6, 4)
+        s_layout.setContentsMargins(6, 3, 6, 3)
+        s_layout.setSpacing(8)
 
-        icon_name = 'fa5s.globe' if self.mcp.is_remote else 'fa5s.terminal'
-        snippet_icon = QLabel()
-        snippet_icon.setPixmap(qta.icon(icon_name, color='#94a3b8').pixmap(14, 14))
-        s_layout.addWidget(snippet_icon)
-
-        cmd_text = self.mcp.command_display or "(Sem comando configurado)"
+        cmd_text = self.mcp.command_display_masked or "(Sem comando configurado)"
         self.cmd_lbl = QLabel(cmd_text)
-        self.cmd_lbl.setStyleSheet("font-family: monospace; color: #38bdf8; font-size: 11px;")
+        self.cmd_lbl.setStyleSheet("background: transparent; border: none; font-family: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Consolas, monospace; color: #94a3b8; font-size: 11px;")
         s_layout.addWidget(self.cmd_lbl, 1)
+
+        # Env / Headers count tags
+        if self.mcp.env:
+            env_tag = QLabel(f"⚡ {len(self.mcp.env)} env")
+            env_tag.setStyleSheet("background: transparent; border: none; color: #fbbf24; font-size: 10px; font-weight: 600; padding: 0 4px;")
+            s_layout.addWidget(env_tag)
+
+        if self.mcp.headers:
+            hdr_tag = QLabel(f"🔑 {len(self.mcp.headers)} hdr")
+            hdr_tag.setStyleSheet("background: transparent; border: none; color: #c084fc; font-size: 10px; font-weight: 600; padding: 0 4px;")
+            s_layout.addWidget(hdr_tag)
 
         copy_btn = QPushButton()
         copy_btn.setIcon(qta.icon('fa5s.copy', color='#64748b'))
         copy_btn.setFixedSize(22, 22)
         copy_btn.setToolTip("Copiar comando")
-        copy_btn.setStyleSheet("background: transparent; border: none;")
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background: #1e2434;
+            }
+        """)
         copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(cmd_text))
         s_layout.addWidget(copy_btn)
 
-        snippet_row.addWidget(snippet_box, 1)
-
-        # Env / Headers count tags
-        if self.mcp.env:
-            env_tag = QLabel(f"⚡ {len(self.mcp.env)} env vars")
-            env_tag.setStyleSheet("color: #fbbf24; font-size: 11px; padding: 0 4px;")
-            snippet_row.addWidget(env_tag)
-
-        if self.mcp.headers:
-            hdr_tag = QLabel(f"🔑 {len(self.mcp.headers)} headers")
-            hdr_tag.setStyleSheet("color: #a78bfa; font-size: 11px; padding: 0 4px;")
-            snippet_row.addWidget(hdr_tag)
-
-        layout.addLayout(snippet_row)
+        layout.addWidget(snippet_box)
 
     def _on_toggled(self, checked: bool):
-        self.status_badge.setText("ATIVO" if checked else "INATIVO")
-        self.status_badge.set_variant("active" if checked else "inactive")
+        self.status_badge.set_variant("active" if checked else "inactive", text="ATIVO" if checked else "INATIVO")
         self.toggled.emit(self.mcp, checked)
 
 class McpPanel(QWidget):
@@ -188,28 +205,56 @@ class McpPanel(QWidget):
         self.config_manager = config_manager
         self.sync_callback = sync_callback
         self.mcps: list[McpServer] = []
+        self.project_path = "GLOBAL"
         self._setup_ui()
         self.reload_data()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(8)
 
-        # Top Bar
+        # Clean Unified Filter Bar
         top_bar = QHBoxLayout()
-        top_bar.setSpacing(10)
+        top_bar.setSpacing(8)
 
-        # Search
-        self.search_bar = SearchBar(placeholder="Buscar MCP Server por nome ou comando...")
+        # Search Bar
+        self.search_bar = SearchBar(placeholder="Buscar MCP Server...")
         self.search_bar.textChanged.connect(self._filter_items)
-        top_bar.addWidget(self.search_bar, 1)
+        top_bar.addWidget(self.search_bar, 3)
 
-        # Filter Status
+        # Scope Filter Combo (Default: Global)
+        scope_lbl = QLabel("Escopo:")
+        scope_lbl.setStyleSheet("font-size: 11px; color: #94a3b8; font-weight: 500;")
+        top_bar.addWidget(scope_lbl)
+
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem("Apenas Global / Home (~)", "GLOBAL")
+        self.scope_combo.addItem("Todos os Escopos (Global + Projetos)", "__ALL__")
+        from config_managers.base import BaseConfigManager
+        for p in BaseConfigManager.get_known_projects():
+            self.scope_combo.addItem(f"{os.path.basename(p)} ({p})", p)
+        self.scope_combo.setCurrentIndex(0)
+        self.scope_combo.currentIndexChanged.connect(self._on_scope_changed)
+        top_bar.addWidget(self.scope_combo, 2)
+
+        # Add Project Button
+        self.add_proj_btn = QPushButton("Adicionar Projeto")
+        self.add_proj_btn.setObjectName("secondaryBtn")
+        self.add_proj_btn.setIcon(qta.icon('fa5s.folder-plus', color='#fbbf24'))
+        self.add_proj_btn.setToolTip("Adicionar pasta de projeto ao seletor de escopo")
+        self.add_proj_btn.clicked.connect(self._browse_and_add_project)
+        top_bar.addWidget(self.add_proj_btn)
+
+        # Status Filter Combo
+        status_lbl = QLabel("Select:")
+        status_lbl.setStyleSheet("font-size: 11px; color: #94a3b8; font-weight: 500;")
+        top_bar.addWidget(status_lbl)
+
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["Todos os Status", "Apenas Habilitados", "Apenas Desabilitados", "Removidos Temporariamente"])
+        self.filter_combo.addItems(["Todos os Status", "● Ativos", "● Inativos", "● Temporários"])
         self.filter_combo.currentTextChanged.connect(self._filter_items)
-        top_bar.addWidget(self.filter_combo)
+        top_bar.addWidget(self.filter_combo, 1)
 
         # Add Button
         self.add_btn = QPushButton("+ Adicionar MCP")
@@ -219,19 +264,21 @@ class McpPanel(QWidget):
         top_bar.addWidget(self.add_btn)
 
         # Raw Config button
-        self.raw_btn = QPushButton("Config JSON")
+        self.raw_btn = QPushButton()
         self.raw_btn.setObjectName("secondaryBtn")
-        self.raw_btn.setIcon(qta.icon('fa5s.code', color='#38bdf8'))
-        self.raw_btn.setToolTip("Visualizar e editar JSON de configuração diretamente")
+        self.raw_btn.setIcon(qta.icon('fa5s.code', color='#94a3b8'))
+        self.raw_btn.setToolTip("Visualizar/editar JSON de configuração bruta")
+        self.raw_btn.setFixedSize(30, 28)
         self.raw_btn.clicked.connect(self._open_raw_config)
         top_bar.addWidget(self.raw_btn)
 
         # Reload button
         self.reload_btn = QPushButton()
         self.reload_btn.setObjectName("secondaryBtn")
-        self.reload_btn.setIcon(qta.icon('fa5s.redo', color='#cbd5e1'))
+        self.reload_btn.setIcon(qta.icon('fa5s.redo', color='#94a3b8'))
         self.reload_btn.setToolTip("Recarregar do disco")
-        self.reload_btn.clicked.connect(self.reload_data)
+        self.reload_btn.setFixedSize(30, 28)
+        self.reload_btn.clicked.connect(lambda: self.reload_data())
         top_bar.addWidget(self.reload_btn)
 
         layout.addLayout(top_bar)
@@ -240,18 +287,42 @@ class McpPanel(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setStyleSheet("background: transparent; border: none;")
 
         self.cards_container = QWidget()
+        self.cards_container.setStyleSheet("background: transparent; border: none;")
         self.cards_layout = QVBoxLayout(self.cards_container)
-        self.cards_layout.setSpacing(10)
+        self.cards_layout.setSpacing(8)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.cards_layout.addStretch()
 
         self.scroll_area.setWidget(self.cards_container)
         layout.addWidget(self.scroll_area, 1)
 
+    def _browse_and_add_project(self):
+        from PyQt6.QtWidgets import QFileDialog
+        folder = QFileDialog.getExistingDirectory(self, "Selecionar Diretório do Projeto", os.path.expanduser("~"))
+        if folder:
+            from config_managers.base import BaseConfigManager
+            if not BaseConfigManager.is_valid_project_path(folder):
+                QMessageBox.warning(self, "Aviso", "O diretório selecionado não é válido como projeto.")
+                return
+            BaseConfigManager.register_known_project(folder)
+            idx = self.scope_combo.findData(folder)
+            if idx < 0:
+                self.scope_combo.addItem(f"{os.path.basename(folder)} ({folder})", folder)
+                idx = self.scope_combo.count() - 1
+            self.scope_combo.setCurrentIndex(idx)
+
+    def _on_scope_changed(self, idx: int):
+        self.project_path = self.scope_combo.currentData() or "__ALL__"
+        self._render_cards()
+        # Notify parent AgentTab if needed
+        if hasattr(self.parent(), 'on_scope_changed_from_panel'):
+            self.parent().on_scope_changed_from_panel(self.project_path, source="mcp")
+
     def reload_data(self, project_path: str = None):
-        self.project_path = getattr(self, 'project_path', None) if project_path is None else project_path
+        self.project_path = getattr(self, 'project_path', "__ALL__") if project_path is None else project_path
         if hasattr(self.config_manager, 'list_mcps'):
             self.mcps = self.config_manager.list_mcps()
         else:
@@ -260,8 +331,14 @@ class McpPanel(QWidget):
         self.statusChanged.emit(f"{len(self.mcps)} MCP Servers carregados para {self.agent_name}")
 
     def set_project_filter(self, project_path: str = None):
-        self.project_path = project_path
-        self.reload_data(project_path)
+        self.project_path = project_path or "__ALL__"
+        for i in range(self.scope_combo.count()):
+            if self.scope_combo.itemData(i) == self.project_path:
+                self.scope_combo.blockSignals(True)
+                self.scope_combo.setCurrentIndex(i)
+                self.scope_combo.blockSignals(False)
+                break
+        self.reload_data(self.project_path)
 
     def _render_cards(self):
         # Clear existing cards
@@ -288,11 +365,11 @@ class McpPanel(QWidget):
             if query and query not in mcp.name.lower() and query not in mcp.command_display.lower():
                 continue
             # Check status
-            if "Habilitados" in status_filter and (not mcp.enabled or mcp.shelved):
+            if "Ativos" in status_filter and (not mcp.enabled or mcp.shelved):
                 continue
-            if "Desabilitados" in status_filter and (mcp.enabled or mcp.shelved):
+            if "Inativos" in status_filter and (mcp.enabled or mcp.shelved):
                 continue
-            if "Removidos Temporariamente" in status_filter and not mcp.shelved:
+            if "Temporários" in status_filter and not mcp.shelved:
                 continue
 
             card = McpCard(mcp)

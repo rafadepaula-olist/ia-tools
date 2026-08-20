@@ -20,15 +20,31 @@ Compatível nativamente com:
 
 <br/>
 
-| 🔌 Editor Visual & JSON de MCP Servers | 🧩 Editor de Skills com Frontmatter & Markdown |
-|:---:|:---:|
-| <img src="assets/screenshots/mcp_editor.png" alt="Editor MCP" width="460" /> | <img src="assets/screenshots/skill_editor.png" alt="Editor de Skills" width="460" /> |
+| 🔌 Editor Visual de MCP | 💻 Editor JSON de MCP | 🧩 Editor de Skills & Markdown |
+|:---:|:---:|:---:|
+| <img src="assets/screenshots/mcp_editor.png" alt="Editor Visual MCP" width="300" /> | <img src="assets/screenshots/mcp_editor_json.png" alt="Editor JSON MCP" width="300" /> | <img src="assets/screenshots/skill_editor.png" alt="Editor de Skills" width="300" /> |
 
 ---
 
 ## 📥 Instalação & Execução
 
-### Opção 1: Rodar a partir do Repositório (Desenvolvimento Rápido)
+### Opção 1: Instalação Automática One-Line (curl | bash) 🚀
+
+Para baixar a versão mais recente e instalar no sistema operacional automaticamente (incluindo atalho no menu de aplicativos do Linux):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rafadepaula-olist/ia-tools/main/install.sh | bash
+```
+
+ou com `wget`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/rafadepaula-olist/ia-tools/main/install.sh | bash
+```
+
+---
+
+### Opção 2: Rodar a partir do Repositório (Desenvolvimento Rápido)
 
 Não é necessário instalar nada manualmente. O script `launcher.sh` cria o ambiente virtual `.venv`, instala as dependências e abre o app automaticamente:
 
@@ -40,7 +56,7 @@ cd ia-tools
 
 ---
 
-### Opção 2: Compilar o Binário Standalone e Instalar no Sistema
+### Opção 3: Compilar o Binário Standalone e Instalar no Sistema
 
 Você pode gerar um **único executável binário independente** (que não precisa de Python ou pip para rodar) e instalá-lo no menu de aplicativos do Linux (`$PATH` e Application Drawer):
 

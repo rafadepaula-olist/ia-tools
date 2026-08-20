@@ -1,13 +1,18 @@
 import os
+import sys
 import shutil
 import datetime
+import tempfile
 import json
 import json5
 import re
+import urllib.parse
 from typing import Any, Dict, Optional, Tuple
 
 class BaseConfigManager:
     BACKUP_DIR = os.path.expanduser("~/.ia-tools-backups")
+    MAX_BACKUPS_PER_FILE = 10
+    MAX_BACKUP_AGE_DAYS = 30
 
     @classmethod
     def ensure_backup_dir(cls):
@@ -18,21 +23,62 @@ class BaseConfigManager:
             pass
 
     @classmethod
+    def prune_backups(cls):
+        """Prunes backups older than MAX_BACKUP_AGE_DAYS or keeping only MAX_BACKUPS_PER_FILE per original config."""
+        if not os.path.exists(cls.BACKUP_DIR):
+            return
+        now = datetime.datetime.now()
+        cutoff = now - datetime.timedelta(days=cls.MAX_BACKUP_AGE_DAYS)
+        file_groups: Dict[str, list] = {}
+
+        try:
+            for entry in os.listdir(cls.BACKUP_DIR):
+                full_path = os.path.join(cls.BACKUP_DIR, entry)
+                if not os.path.isfile(full_path) or not entry.endswith(".bak"):
+                    continue
+
+                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(full_path))
+                if mtime < cutoff:
+                    try:
+                        os.remove(full_path)
+                    except OSError:
+                        pass
+                    continue
+
+                parts = entry.rsplit(".", 2)
+                prefix = parts[0] if len(parts) >= 3 else entry
+                file_groups.setdefault(prefix, []).append((mtime, full_path))
+
+            for prefix, backups in file_groups.items():
+                if len(backups) > cls.MAX_BACKUPS_PER_FILE:
+                    backups.sort(key=lambda x: x[0])
+                    excess = len(backups) - cls.MAX_BACKUPS_PER_FILE
+                    for _, old_path in backups[:excess]:
+                        try:
+                            os.remove(old_path)
+                        except OSError:
+                            pass
+        except Exception as e:
+            print(f"Error pruning backups: {e}")
+
+    @classmethod
     def backup_file(cls, filepath: str) -> Optional[str]:
         if not filepath or not os.path.exists(filepath):
             return None
         cls.ensure_backup_dir()
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_name = os.path.basename(filepath)
-        backup_path = os.path.join(cls.BACKUP_DIR, f"{base_name}.{ts}.bak")
+        bak_file = os.path.join(cls.BACKUP_DIR, f"{os.path.basename(filepath)}.{ts}.bak")
         try:
-            shutil.copy2(filepath, backup_path)
-            # Also keep a single local .bak
-            local_bak = f"{filepath}.bak"
-            shutil.copy2(filepath, local_bak)
-            return backup_path
+            shutil.copy2(filepath, bak_file)
+            if hasattr(os, 'chmod') and os.name == 'posix':
+                try:
+                    os.chmod(bak_file, 0o600)
+                except OSError:
+                    pass
+            cls.prune_backups()
+            return bak_file
         except Exception as e:
-            print(f"Warning: Failed to backup {filepath}: {e}")
+            print(f"Error backing up {filepath}: {e}")
             return None
 
     @classmethod
@@ -41,36 +87,54 @@ class BaseConfigManager:
             return {}
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-                if not content.strip():
+                content = f.read().strip()
+                if not content:
                     return {}
-                # Try standard json first, fallback to json5 for comments/trailing commas
                 try:
                     return json.loads(content)
                 except Exception:
                     return json5.loads(content)
         except Exception as e:
-            print(f"Error reading JSON from {filepath}: {e}")
+            print(f"Error reading JSON/JSON5 file {filepath}: {e}")
             return {}
 
     @classmethod
     def write_json_file(cls, filepath: str, data: Dict[str, Any], backup: bool = True) -> bool:
+        tmp_path = None
         try:
             if backup and os.path.exists(filepath):
                 cls.backup_file(filepath)
 
-            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-            tmp_path = f"{filepath}.tmp"
-            with open(tmp_path, 'w', encoding='utf-8') as f:
+            dir_path = os.path.dirname(os.path.abspath(filepath))
+            os.makedirs(dir_path, exist_ok=True)
+
+            fd, tmp_path = tempfile.mkstemp(prefix=".ia_tools_", suffix=".tmp", dir=dir_path)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
                 f.write("\n")
+                f.flush()
+                os.fsync(f.fileno())
 
             # Atomic rename
             os.replace(tmp_path, filepath)
+            tmp_path = None
+
+            # Ensure restrictive permissions (0o600) for credentials & tokens on POSIX
+            if hasattr(os, 'chmod') and os.name == 'posix':
+                try:
+                    os.chmod(filepath, 0o600)
+                except OSError:
+                    pass
             return True
         except Exception as e:
             print(f"Error writing JSON to {filepath}: {e}")
             return False
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
     @classmethod
     def parse_skill_md(cls, skill_md_path: str) -> Tuple[str, str]:
@@ -80,18 +144,20 @@ class BaseConfigManager:
         try:
             with open(skill_md_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            # Frontmatter regex
-            match = re.search(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
+
             name = ""
             desc = ""
-            if match:
-                yaml_block = match.group(1)
-                name_m = re.search(r'^name:\s*(.+)$', yaml_block, re.MULTILINE)
-                desc_m = re.search(r'^description:\s*(.+)$', yaml_block, re.MULTILINE)
-                if name_m:
-                    name = name_m.group(1).strip(' "\'')
-                if desc_m:
-                    desc = desc_m.group(1).strip(' "\'')
+            if content.startswith('---'):
+                parts = content.split('---', 2)
+                if len(parts) >= 3:
+                    frontmatter = parts[1]
+                    for line in frontmatter.split('\n'):
+                        line = line.strip()
+                        if line.startswith('name:'):
+                            name = line.split('name:', 1)[1].strip().strip('"\'')
+                        elif line.startswith('description:'):
+                            desc = line.split('description:', 1)[1].strip().strip('"\'')
+
             if not desc:
                 # First non-header line
                 lines = [l.strip() for l in content.split('\n') if l.strip() and not l.startswith('#') and not l.startswith('---')]
@@ -104,7 +170,7 @@ class BaseConfigManager:
 
     @classmethod
     def is_valid_project_path(cls, path: Optional[str]) -> bool:
-        """Validates if a given path is a valid workspace project directory (and not home / system / tool config folder)."""
+        """Validates if a given path is a valid workspace project directory across Linux, macOS and Windows."""
         if not path or not isinstance(path, str):
             return False
 
@@ -117,6 +183,30 @@ class BaseConfigManager:
 
         if abs_path == home or abs_path == "/" or not os.path.exists(abs_path) or not os.path.isdir(abs_path):
             return False
+
+        # Reject Windows root drives (e.g., C:\, D:\)
+        drive, tail = os.path.splitdrive(abs_path)
+        if drive and tail in ("", "/", "\\", os.sep):
+            return False
+
+        # Exclude temporary PyInstaller and system mount directories
+        if "_MEI" in abs_path:
+            return False
+        for s_prefix in ("/proc", "/sys", "/dev", "/run"):
+            if abs_path == s_prefix or abs_path.startswith(s_prefix + os.sep):
+                return False
+
+        # Windows system folders
+        win_dir = os.environ.get("WINDIR") or os.environ.get("SystemRoot")
+        prog_files = os.environ.get("ProgramFiles")
+        prog_files_x86 = os.environ.get("ProgramFiles(x86)")
+        prog_data = os.environ.get("ProgramData")
+
+        for w_prefix in (win_dir, prog_files, prog_files_x86, prog_data):
+            if w_prefix:
+                w_norm = os.path.abspath(w_prefix)
+                if abs_path == w_norm or abs_path.startswith(w_norm + os.sep):
+                    return False
 
         # Exclude hidden config/system folders in user home
         excluded_home_prefixes = (
@@ -136,6 +226,7 @@ class BaseConfigManager:
             os.path.join(home, ".ssh"),
             os.path.join(home, ".var"),
             os.path.join(home, ".gnupg"),
+            os.path.join(home, "AppData", "Local", "Temp"),
         )
         for prefix in excluded_home_prefixes:
             if abs_path == prefix or abs_path.startswith(prefix + os.sep):
@@ -145,44 +236,42 @@ class BaseConfigManager:
 
     @classmethod
     def get_known_projects(cls) -> list[str]:
-        """Discovers active projects from Claude, Gemini and common directories."""
+        """Returns explicitly registered projects saved by the user in ia-tools configuration."""
         home = os.path.expanduser("~")
         projects = set()
 
-        # Claude projects
-        claude_json = os.path.join(home, ".claude.json")
-        if os.path.exists(claude_json):
+        # Load from ia-tools persistence
+        ia_tools_cfg = os.path.join(home, ".config", "ia-tools", "projects.json")
+        if os.path.exists(ia_tools_cfg):
             try:
-                c_data = cls.read_json_file(claude_json)
-                for p in c_data.get("projects", {}).keys():
-                    if cls.is_valid_project_path(p):
-                        projects.add(os.path.abspath(os.path.expanduser(p)))
-            except Exception:
-                pass
-
-        # Gemini projects
-        gemini_projects = os.path.join(home, ".gemini", "projects.json")
-        if os.path.exists(gemini_projects):
-            try:
-                g_data = cls.read_json_file(gemini_projects)
-                for item in g_data.get("recentProjects", []):
-                    p = item.get("path") if isinstance(item, dict) else item
-                    if cls.is_valid_project_path(p):
-                        projects.add(os.path.abspath(os.path.expanduser(p)))
-                p_dict = g_data.get("projects", {})
-                if isinstance(p_dict, dict):
-                    for p in p_dict.keys():
+                data = cls.read_json_file(ia_tools_cfg)
+                if isinstance(data, list):
+                    for p in data:
                         if cls.is_valid_project_path(p):
                             projects.add(os.path.abspath(os.path.expanduser(p)))
             except Exception:
                 pass
 
-        # Also add current workspace if valid
-        ia_tools_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if cls.is_valid_project_path(ia_tools_dir):
-            projects.add(ia_tools_dir)
+        # Also add current workspace if running from source in development
+        if not getattr(sys, 'frozen', False):
+            ia_tools_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            if cls.is_valid_project_path(ia_tools_dir):
+                projects.add(ia_tools_dir)
 
-        return sorted(list(projects), key=lambda x: x.lower())
+        return sorted(list(projects))
+
+    @classmethod
+    def register_known_project(cls, path: str) -> None:
+        """Persists a new project path added by user in ~/.config/ia-tools/projects.json."""
+        if not cls.is_valid_project_path(path):
+            return
+        abs_p = os.path.abspath(os.path.expanduser(path))
+        projects = set(cls.get_known_projects())
+        projects.add(abs_p)
+        home = os.path.expanduser("~")
+        ia_tools_dir = os.path.join(home, ".config", "ia-tools")
+        os.makedirs(ia_tools_dir, exist_ok=True)
+        cls.write_json_file(os.path.join(ia_tools_dir, "projects.json"), sorted(list(projects)))
 
     @classmethod
     def scan_project_skills(cls, project_path: str) -> list:
