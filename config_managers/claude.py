@@ -44,10 +44,10 @@ class ClaudeConfigManager(BaseConfigManager):
                 seen.add(("global", None, name))
                 servers.append(self._dict_to_mcp(name, cfg, enabled=False, scope="global", source_file=self.claude_json_file))
 
-        # 3. Project-level MCPs in ~/.claude.json (e.g. ~/, ~/tiny/tinystack/tinyerp, etc.)
+        # 3. Project-level MCPs in ~/.claude.json (e.g. ~/tiny/tinystack/tinyerp, etc.)
         projects = claude_data.get("projects", {})
         for proj_path, proj_data in projects.items():
-            if not isinstance(proj_data, dict):
+            if not isinstance(proj_data, dict) or not self.is_valid_project_path(proj_path):
                 continue
             
             proj_mcps = proj_data.get("mcpServers", {})
@@ -368,7 +368,8 @@ class ClaudeConfigManager(BaseConfigManager):
 
         # 4. Project-specific skills
         if project_path:
-            items.extend(self.scan_project_skills(project_path))
+            if self.is_valid_project_path(project_path):
+                items.extend(self.scan_project_skills(project_path))
         else:
             for p in self.get_known_projects():
                 items.extend(self.scan_project_skills(p))

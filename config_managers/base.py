@@ -103,6 +103,47 @@ class BaseConfigManager:
             return "", ""
 
     @classmethod
+    def is_valid_project_path(cls, path: Optional[str]) -> bool:
+        """Validates if a given path is a valid workspace project directory (and not home / system / tool config folder)."""
+        if not path or not isinstance(path, str):
+            return False
+
+        path_str = path.strip()
+        if not path_str or path_str in ("~", "/", "\\"):
+            return False
+
+        home = os.path.abspath(os.path.expanduser("~"))
+        abs_path = os.path.abspath(os.path.expanduser(path_str))
+
+        if abs_path == home or abs_path == "/" or not os.path.exists(abs_path) or not os.path.isdir(abs_path):
+            return False
+
+        # Exclude hidden config/system folders in user home
+        excluded_home_prefixes = (
+            os.path.join(home, ".gemini"),
+            os.path.join(home, ".claude"),
+            os.path.join(home, ".config"),
+            os.path.join(home, ".agents"),
+            os.path.join(home, ".antigravity"),
+            os.path.join(home, ".antigravity-ide"),
+            os.path.join(home, ".opencode"),
+            os.path.join(home, ".codex"),
+            os.path.join(home, ".windsurf"),
+            os.path.join(home, ".cursor"),
+            os.path.join(home, ".litellm"),
+            os.path.join(home, ".local"),
+            os.path.join(home, ".cache"),
+            os.path.join(home, ".ssh"),
+            os.path.join(home, ".var"),
+            os.path.join(home, ".gnupg"),
+        )
+        for prefix in excluded_home_prefixes:
+            if abs_path == prefix or abs_path.startswith(prefix + os.sep):
+                return False
+
+        return True
+
+    @classmethod
     def get_known_projects(cls) -> list[str]:
         """Discovers active projects from Claude, Gemini and common directories."""
         home = os.path.expanduser("~")
@@ -114,8 +155,8 @@ class BaseConfigManager:
             try:
                 c_data = cls.read_json_file(claude_json)
                 for p in c_data.get("projects", {}).keys():
-                    if os.path.exists(p) and os.path.isdir(p) and p != home:
-                        projects.add(os.path.abspath(p))
+                    if cls.is_valid_project_path(p):
+                        projects.add(os.path.abspath(os.path.expanduser(p)))
             except Exception:
                 pass
 
@@ -126,14 +167,19 @@ class BaseConfigManager:
                 g_data = cls.read_json_file(gemini_projects)
                 for item in g_data.get("recentProjects", []):
                     p = item.get("path") if isinstance(item, dict) else item
-                    if p and isinstance(p, str) and os.path.exists(p) and os.path.isdir(p) and p != home:
-                        projects.add(os.path.abspath(p))
+                    if cls.is_valid_project_path(p):
+                        projects.add(os.path.abspath(os.path.expanduser(p)))
+                p_dict = g_data.get("projects", {})
+                if isinstance(p_dict, dict):
+                    for p in p_dict.keys():
+                        if cls.is_valid_project_path(p):
+                            projects.add(os.path.abspath(os.path.expanduser(p)))
             except Exception:
                 pass
 
         # Also add current workspace if valid
         ia_tools_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if os.path.exists(ia_tools_dir) and os.path.isdir(ia_tools_dir) and ia_tools_dir != home:
+        if cls.is_valid_project_path(ia_tools_dir):
             projects.add(ia_tools_dir)
 
         return sorted(list(projects), key=lambda x: x.lower())
@@ -143,7 +189,7 @@ class BaseConfigManager:
         """Scans for skills within a specific project folder."""
         from models.plugin import PluginSkill
         skills: list[PluginSkill] = []
-        if not project_path or not os.path.exists(project_path):
+        if not cls.is_valid_project_path(project_path):
             return skills
 
         # Candidate skill subdirectories in the project

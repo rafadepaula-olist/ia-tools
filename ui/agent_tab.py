@@ -173,6 +173,11 @@ class AgentTab(QWidget):
     def _browse_custom_project(self):
         folder = QFileDialog.getExistingDirectory(self, "Selecionar Diretório do Projeto", os.path.expanduser("~"))
         if folder:
+            if not BaseConfigManager.is_valid_project_path(folder):
+                idx = self.proj_combo.findData("GLOBAL")
+                if idx >= 0:
+                    self.proj_combo.setCurrentIndex(idx)
+                return
             # Check if already exists in combo
             idx = self.proj_combo.findData(folder)
             if idx >= 0:

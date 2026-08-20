@@ -416,7 +416,8 @@ Do not optimize without explain plan.
         cl.claude_dir = fake_claude_dir
         cl.settings_file = os.path.join(fake_claude_dir, "settings.json")
 
-        proj_path = "/home/user/my_shelve_proj"
+        proj_path = os.path.join(self.tmp_dir, "my_shelve_proj")
+        os.makedirs(proj_path, exist_ok=True)
         proj_mcp = McpServer(
             name="proj-heavy-mcp",
             server_type="stdio",
@@ -483,6 +484,95 @@ Do not optimize without explain plan.
         self.assertTrue(oc.unshelve_mcp(oc_list[0]))
         oc_data_restored = oc.read_json_file(oc.jsonc_file)
         self.assertIn("opencode-heavy", oc_data_restored.get("mcp", {}))
+
+    def test_is_valid_project_path(self):
+        home = os.path.expanduser("~")
+        self.assertFalse(BaseConfigManager.is_valid_project_path(None))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(""))
+        self.assertFalse(BaseConfigManager.is_valid_project_path("~"))
+        self.assertFalse(BaseConfigManager.is_valid_project_path("/"))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(home))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(os.path.join(home, ".gemini")))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(os.path.join(home, ".gemini", "skills")))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(os.path.join(home, ".claude")))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(os.path.join(home, ".config", "some-app")))
+        self.assertFalse(BaseConfigManager.is_valid_project_path(os.path.join(home, "non_existent_folder_xyz123")))
+
+        # Valid project path
+        valid_proj = os.path.join(self.tmp_dir, "my_cool_project")
+        os.makedirs(valid_proj, exist_ok=True)
+        self.assertTrue(BaseConfigManager.is_valid_project_path(valid_proj))
+
+    def test_antigravity_does_not_duplicate_home_mcps_or_skills(self):
+        fake_gemini_dir = os.path.join(self.tmp_dir, "gemini_home_dup_test")
+        os.makedirs(os.path.join(fake_gemini_dir, "config"), exist_ok=True)
+        ag = AntigravityConfigManager(base_dir=fake_gemini_dir)
+
+        # 1. Global MCP in mcp_config.json
+        ag.write_json_file(ag.mcp_config_file, {
+            "mcpServers": {
+                "github": {"type": "http", "url": "https://api.githubcopilot.com/mcp"}
+            }
+        })
+
+        # 2. projects.json contains home directory and valid project
+        home = os.path.expanduser("~")
+        valid_proj = os.path.join(self.tmp_dir, "valid_proj")
+        os.makedirs(os.path.join(valid_proj, ".gemini"), exist_ok=True)
+        ag.write_json_file(os.path.join(valid_proj, ".gemini", "settings.json"), {
+            "mcpServers": {
+                "project-tool": {"type": "stdio", "command": "echo", "args": ["hi"]}
+            }
+        })
+
+        ag.write_json_file(ag.projects_file, {
+            "projects": {
+                home: "user-home",
+                os.path.join(home, ".gemini"): "gemini-dir",
+                valid_proj: "valid-proj"
+            }
+        })
+
+        mcps = ag.list_mcps()
+        # Should have exactly 2 MCPs: 1 global github, 1 project-tool in valid_proj
+        # NO project-scoped github for home!
+        self.assertEqual(len(mcps), 2)
+        github_mcps = [m for m in mcps if m.name == "github"]
+        self.assertEqual(len(github_mcps), 1)
+        self.assertEqual(github_mcps[0].scope, "global")
+
+        proj_mcps = [m for m in mcps if m.scope == "project"]
+        self.assertEqual(len(proj_mcps), 1)
+        self.assertEqual(proj_mcps[0].name, "project-tool")
+        self.assertEqual(proj_mcps[0].project_path, valid_proj)
+
+    def test_claude_does_not_load_home_as_project_mcp(self):
+        cl = ClaudeConfigManager()
+        fake_claude_json = os.path.join(self.tmp_dir, "claude_home_test.json")
+        fake_claude_dir = os.path.join(self.tmp_dir, "fake_claude_dir")
+        os.makedirs(fake_claude_dir, exist_ok=True)
+        cl.claude_json_file = fake_claude_json
+        cl.claude_dir = fake_claude_dir
+        cl.settings_file = os.path.join(fake_claude_dir, "settings.json")
+
+        home = os.path.expanduser("~")
+        cl.write_json_file(fake_claude_json, {
+            "mcpServers": {
+                "global-tool": {"type": "stdio", "command": "glab", "args": ["mcp"]}
+            },
+            "projects": {
+                home: {
+                    "_disabledMcpServers": {
+                        "clickup": {"type": "http", "url": "https://mcp.clickup.com/mcp"}
+                    }
+                }
+            }
+        })
+
+        mcps = cl.list_mcps()
+        self.assertEqual(len(mcps), 1)
+        self.assertEqual(mcps[0].name, "global-tool")
+        self.assertEqual(mcps[0].scope, "global")
 
 if __name__ == '__main__':
     unittest.main()

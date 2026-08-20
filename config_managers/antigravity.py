@@ -85,31 +85,32 @@ class AntigravityConfigManager(BaseConfigManager):
         if os.path.exists(self.projects_file):
             proj_data = self.read_json_file(self.projects_file)
             projects_dict = proj_data.get("projects", {})
-            for proj_path in projects_dict.keys():
-                if not os.path.isdir(proj_path):
-                    continue
-                proj_cfg_candidates = [
-                    os.path.join(proj_path, ".agents", "mcp_config.json"),
-                    os.path.join(proj_path, ".gemini", "config", "mcp_config.json"),
-                    os.path.join(proj_path, ".gemini", "mcp_config.json"),
-                    os.path.join(proj_path, ".gemini", "settings.json"),
-                ]
-                for p_cfg in proj_cfg_candidates:
-                    if os.path.exists(p_cfg):
-                        p_data = self.read_json_file(p_cfg)
-                        p_mcps = p_data.get("mcpServers", {}) or p_data.get("mcp_servers", {})
-                        for name, cfg in p_mcps.items():
-                            if isinstance(cfg, dict):
-                                key = ("project", proj_path, name)
-                                if key not in seen:
-                                    seen.add(key)
-                                    servers.append(self._dict_to_mcp(
-                                        name=name,
-                                        cfg=cfg,
-                                        scope="project",
-                                        project_path=proj_path,
-                                        source_file=p_cfg
-                                    ))
+            if isinstance(projects_dict, dict):
+                for proj_path in projects_dict.keys():
+                    if not self.is_valid_project_path(proj_path):
+                        continue
+                    proj_cfg_candidates = [
+                        os.path.join(proj_path, ".agents", "mcp_config.json"),
+                        os.path.join(proj_path, ".gemini", "config", "mcp_config.json"),
+                        os.path.join(proj_path, ".gemini", "mcp_config.json"),
+                        os.path.join(proj_path, ".gemini", "settings.json"),
+                    ]
+                    for p_cfg in proj_cfg_candidates:
+                        if os.path.exists(p_cfg):
+                            p_data = self.read_json_file(p_cfg)
+                            p_mcps = p_data.get("mcpServers", {}) or p_data.get("mcp_servers", {})
+                            for name, cfg in p_mcps.items():
+                                if isinstance(cfg, dict):
+                                    key = ("project", proj_path, name)
+                                    if key not in seen:
+                                        seen.add(key)
+                                        servers.append(self._dict_to_mcp(
+                                            name=name,
+                                            cfg=cfg,
+                                            scope="project",
+                                            project_path=proj_path,
+                                            source_file=p_cfg
+                                        ))
 
         # Shelved / Temporarily Removed MCPs
         shelved_paths = {self._get_shelved_path(), self.get_shelved_filepath(self.settings_file)}
@@ -187,8 +188,39 @@ class AntigravityConfigManager(BaseConfigManager):
         if old_mcp and (old_mcp.name != mcp.name or old_mcp.project_path != mcp.project_path):
             self.delete_shelved_mcp(self._get_shelved_path(), old_mcp.name, project_path=old_mcp.project_path)
 
-        if old_mcp and old_mcp.name != mcp.name:
+        if old_mcp and (old_mcp.name != mcp.name or old_mcp.project_path != mcp.project_path):
             self.delete_mcp(old_mcp.name, project_path=old_mcp.project_path)
+
+        if mcp.scope == "project" and mcp.project_path and self.is_valid_project_path(mcp.project_path):
+            # Save into project-specific config
+            proj_cfg_candidates = [
+                os.path.join(mcp.project_path, ".gemini", "config", "mcp_config.json"),
+                os.path.join(mcp.project_path, ".gemini", "settings.json"),
+                os.path.join(mcp.project_path, ".gemini", "mcp_config.json"),
+                os.path.join(mcp.project_path, ".agents", "mcp_config.json"),
+            ]
+            target_cfg = None
+            if mcp.source_file and os.path.exists(mcp.source_file) and mcp.source_file.startswith(mcp.project_path):
+                target_cfg = mcp.source_file
+            else:
+                for c in proj_cfg_candidates:
+                    if os.path.exists(c):
+                        target_cfg = c
+                        break
+                if not target_cfg:
+                    target_cfg = os.path.join(mcp.project_path, ".gemini", "settings.json")
+
+            data = self.read_json_file(target_cfg)
+            if "mcpServers" not in data:
+                data["mcpServers"] = {}
+            mcp_dict = mcp.to_antigravity_dict()
+            mcp_dict["disabled"] = not mcp.enabled
+            data["mcpServers"][mcp.name] = mcp_dict
+            if "_disabledMcpServers" in data:
+                data["_disabledMcpServers"].pop(mcp.name, None)
+            if "disabledMcpServers" in data:
+                data["disabledMcpServers"].pop(mcp.name, None)
+            return self.write_json_file(target_cfg, data)
 
         active_cfg = self._get_active_config_path()
         data = self.read_json_file(active_cfg)
@@ -265,12 +297,21 @@ class AntigravityConfigManager(BaseConfigManager):
         self.delete_shelved_mcp(self.get_shelved_filepath(self.settings_file), name, project_path=project_path)
 
         modified = False
-        candidates = [
-            self.mcp_config_file,
-            self.alt_mcp_config_file,
-            self.settings_file,
-            self.mcp_servers_file
-        ]
+        if project_path and self.is_valid_project_path(project_path):
+            candidates = [
+                os.path.join(project_path, ".agents", "mcp_config.json"),
+                os.path.join(project_path, ".gemini", "config", "mcp_config.json"),
+                os.path.join(project_path, ".gemini", "mcp_config.json"),
+                os.path.join(project_path, ".gemini", "settings.json"),
+            ]
+        else:
+            candidates = [
+                self.mcp_config_file,
+                self.alt_mcp_config_file,
+                self.settings_file,
+                self.mcp_servers_file
+            ]
+
         for cfg_file in candidates:
             if os.path.exists(cfg_file):
                 data = self.read_json_file(cfg_file)
@@ -338,7 +379,8 @@ class AntigravityConfigManager(BaseConfigManager):
 
         # 3. Project-specific skills
         if project_path:
-            items.extend(self.scan_project_skills(project_path))
+            if self.is_valid_project_path(project_path):
+                items.extend(self.scan_project_skills(project_path))
         else:
             for p in self.get_known_projects():
                 items.extend(self.scan_project_skills(p))
