@@ -33,11 +33,27 @@ PRESETS = {
         "args": ["-y", "mcp-remote", "https://mcp.clickup.com/mcp"],
         "env": {}
     },
-    "GitHub MCP Server": {
-        "type": "http",
-        "url": "https://api.githubcopilot.com/mcp",
-        "headers": {
-            "Authorization": "Bearer ghp_xxx"
+    "GitHub MCP Server (Docker Oficial)": {
+        "type": "stdio",
+        "command": "docker",
+        "args": [
+            "run",
+            "-i",
+            "--rm",
+            "-e",
+            "GITHUB_PERSONAL_ACCESS_TOKEN",
+            "ghcr.io/github/github-mcp-server"
+        ],
+        "env": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxx"
+        }
+    },
+    "GitHub MCP Server (Oficial NPX)": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxx"
         }
     },
     "Amazon SP-API Dev Assistant": {
@@ -497,7 +513,7 @@ class McpEditorDialog(QDialog):
                     QMessageBox.warning(self, "Aviso", "Por favor informe o Nome do MCP Server na aba de formulário.")
                     return
                 # Create MCP from JSON dict
-                url = data.get("url", "")
+                url = data.get("serverUrl") or data.get("url", "")
                 scope = self.scope_combo.currentData() or "global"
                 project_path = self.proj_path_combo.currentData() if scope == "project" else None
                 self.result_mcp = McpServer(

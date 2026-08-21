@@ -145,15 +145,29 @@ class AntigravityConfigManager(BaseConfigManager):
             elif "enabled" in cfg:
                 enabled = bool(cfg["enabled"])
 
-        url = cfg.get("url") or cfg.get("serverUrl", "")
-        headers = cfg.get("headers", {})
+        url = cfg.get("serverUrl") or cfg.get("url", "")
+        headers = dict(cfg.get("headers", {}))
         command = cfg.get("command", "")
-        args = cfg.get("args", [])
+        args = list(cfg.get("args", []))
         env = cfg.get("env") or cfg.get("environment", {})
         server_type = cfg.get("type", "")
 
         if isinstance(args, str):
             args = [args]
+
+        # Detect mcp-remote STDIO bridge
+        if command == "npx" and "mcp-remote" in args:
+            idx = args.index("mcp-remote")
+            if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
+                url = args[idx + 1]
+            for i, a in enumerate(args):
+                if a == "--header" and i + 1 < len(args):
+                    h_val = args[i + 1]
+                    if ":" in h_val:
+                        hk, hv = h_val.split(":", 1)
+                        headers[hk.strip()] = hv.strip()
+            if not server_type:
+                server_type = "http" if not url.endswith("/sse") else "sse"
 
         if not server_type:
             if url:

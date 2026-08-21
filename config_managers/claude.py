@@ -76,31 +76,7 @@ class ClaudeConfigManager(BaseConfigManager):
                         source_file=self.claude_json_file
                     ))
 
-        # 4. Cloud claude.ai MCPs (from ~/.claude/mcp-needs-auth-cache.json or remote settings)
-        cloud_cache_file = os.path.join(self.claude_dir, "mcp-needs-auth-cache.json")
-        cloud_urls = {
-            "claude.ai Datadog": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp",
-            "claude.ai Intercom": "https://mcp.intercom.com/mcp",
-            "claude.ai HubSpot": "https://mcp.hubspot.com/anthropic",
-            "claude.ai Figma": "https://mcp.figma.com/mcp",
-            "claude.ai Asana": "https://mcp.asana.com/sse",
-        }
-        if os.path.exists(cloud_cache_file):
-            cache_data = self.read_json_file(cloud_cache_file)
-            for c_name in cache_data.keys():
-                if c_name.startswith("claude.ai") and not any(s.name == c_name for s in servers):
-                    c_url = cloud_urls.get(c_name, "")
-                    servers.append(McpServer(
-                        name=c_name,
-                        server_type="http" if not c_url.endswith("/sse") else "sse",
-                        url=c_url,
-                        enabled=True,
-                        scope="cloud",
-                        project_path="claude.ai",
-                        source_file=cloud_cache_file
-                    ))
-
-        # 5. Shelved / Temporarily Removed MCPs
+        # 4. Shelved / Temporarily Removed MCPs
         for sm in self.read_shelved_mcps(self._get_shelved_path()):
             key = (sm.scope, sm.project_path, sm.name)
             if key not in seen:

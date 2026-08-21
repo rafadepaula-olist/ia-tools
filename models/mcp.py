@@ -61,10 +61,8 @@ class McpServer:
         """Convert to Antigravity format."""
         if self.is_remote:
             d = {}
-            if self.server_type:
-                d["type"] = self.server_type
             if self.url:
-                d["url"] = self.url
+                d["serverUrl"] = self.url
             if self.headers:
                 d["headers"] = self.headers
             return d

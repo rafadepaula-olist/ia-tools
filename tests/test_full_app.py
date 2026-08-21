@@ -75,7 +75,8 @@ class TestFullIntegration(unittest.TestCase):
         )
 
         ag_dict = mcp_remote.to_antigravity_dict()
-        self.assertEqual(ag_dict["url"], "https://mcp.example.com/sse")
+        self.assertEqual(ag_dict["serverUrl"], "https://mcp.example.com/sse")
+        self.assertNotIn("type", ag_dict)
         self.assertEqual(ag_dict["headers"]["Authorization"], "Bearer token123")
 
         cl_dict = mcp_remote.to_claude_dict()
